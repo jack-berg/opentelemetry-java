@@ -20,6 +20,9 @@ import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.exporter.otlp.internal.TraceRequestMarshaler;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.internal.ThrottlingLogger;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.SdkTracerProviderBuilder;
+import io.opentelemetry.sdk.trace.SpanLimits;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import java.util.Collection;
@@ -63,6 +66,33 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
    *     0 or to a negative value, the exporter will wait indefinitely.
    */
   OtlpGrpcSpanExporter(ManagedChannel channel, long timeoutNanos) {
+    SdkTracerProvider.builder()
+        .setSpanLimits(new SpanLimits() {
+          @Override
+          public int getMaxNumberOfAttributes() {
+            return 0;
+          }
+
+          @Override
+          public int getMaxNumberOfEvents() {
+            return 0;
+          }
+
+          @Override
+          public int getMaxNumberOfLinks() {
+            return 0;
+          }
+
+          @Override
+          public int getMaxNumberOfAttributesPerEvent() {
+            return 0;
+          }
+
+          @Override
+          public int getMaxNumberOfAttributesPerLink() {
+            return 0;
+          }
+        });
     // TODO: telemetry schema version.
     Meter meter = GlobalMeterProvider.get().meterBuilder("io.opentelemetry.exporters.otlp").build();
     this.spansSeen =
