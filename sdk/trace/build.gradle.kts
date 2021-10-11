@@ -32,6 +32,7 @@ dependencies {
   testAnnotationProcessor("com.google.auto.value:auto-value")
 
   testImplementation(project(":sdk:testing"))
+  testImplementation(project(":sdk-extensions:tracing-incubator"))
   testImplementation("com.google.guava:guava")
 
   jmh(project(":sdk:metrics"))
