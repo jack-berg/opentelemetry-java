@@ -10,13 +10,13 @@ import io.opentelemetry.context.Context;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-class DefaultLogEmitter implements LogEmitter {
+class DefaultLogger implements Logger {
 
-  private static final LogEmitter INSTANCE = new DefaultLogEmitter();
+  private static final Logger INSTANCE = new DefaultLogger();
 
   private static final EventBuilder NOOP_EVENT_BUILDER = new NoopEventBuilder();
 
-  static LogEmitter getInstance() {
+  static Logger getInstance() {
     return INSTANCE;
   }
 

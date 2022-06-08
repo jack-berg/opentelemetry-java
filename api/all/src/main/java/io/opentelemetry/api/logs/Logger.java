@@ -5,7 +5,7 @@
 
 package io.opentelemetry.api.logs;
 
-public interface LogEmitter {
+public interface Logger {
 
   EventBuilder eventBuilder(String name);
 

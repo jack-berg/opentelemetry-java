@@ -20,21 +20,21 @@ class LogApiTest {
     OpenTelemetry openTelemetry = OpenTelemetry.noop();
 
     // Obtain a logger
-    LogEmitter logEmitter = openTelemetry.getLogger("my-logger-scope");
+    Logger logger = openTelemetry.getLogger("my-logger-scope");
 
     // Obtain a logger with scope attributes indicating the event domain
     // Event names are expected to be unique within a domain
-    logEmitter =
+    logger =
         openTelemetry
             .loggerBuilder("my-logger-scope")
             .setAttributes(Attributes.builder().put("event.domain", "otel.jfr").build())
             .build();
 
     // Emit a simple event named my-event
-    logEmitter.eventBuilder("my-event").emit();
+    logger.eventBuilder("my-event").emit();
 
     // Emit an event with attributes
-    logEmitter
+    logger
         .eventBuilder("jdk.execution_sample")
         .setAttributes(
             Attributes.builder()
@@ -47,7 +47,7 @@ class LogApiTest {
     // Emit a low level log record
     // NOTE: the API for emitting log records is only intended to be used by log appender adapters
     // to adapt logs from existing log frameworks (Log4j, Logback) to OpenTelemetry
-    logEmitter
+    logger
         .logRecordBuilder()
         .setSeverity(Severity.DEBUG)
         .setBody("My application log message")

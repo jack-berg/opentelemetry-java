@@ -5,9 +5,9 @@
 
 package io.opentelemetry.api;
 
-import io.opentelemetry.api.logs.LogEmitter;
-import io.opentelemetry.api.logs.LogEmitterBuilder;
-import io.opentelemetry.api.logs.LogEmitterProvider;
+import io.opentelemetry.api.logs.Logger;
+import io.opentelemetry.api.logs.LoggerBuilder;
+import io.opentelemetry.api.logs.LoggerProvider;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterBuilder;
 import io.opentelemetry.api.metrics.MeterProvider;
@@ -116,15 +116,15 @@ public interface OpenTelemetry {
     return getMeterProvider().meterBuilder(instrumentationScopeName);
   }
 
-  default LogEmitterProvider getLoggerProvider() {
-    return LogEmitterProvider.noop();
+  default LoggerProvider getLoggerProvider() {
+    return LoggerProvider.noop();
   }
 
-  default LogEmitter getLogger(String instrumentationScopeName) {
+  default Logger getLogger(String instrumentationScopeName) {
     return getLoggerProvider().get(instrumentationScopeName);
   }
 
-  default LogEmitterBuilder loggerBuilder(String instrumentationScopeName) {
+  default LoggerBuilder loggerBuilder(String instrumentationScopeName) {
     return getLoggerProvider().loggerBuilder(instrumentationScopeName);
   }
 
