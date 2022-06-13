@@ -20,22 +20,18 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - macos-latest
           - ubuntu-20.04
         test-java-version:
           - 8
-          - 11
-          - 17
-          - 18
-        # Collect coverage on latest LTS
-        include:
-          - os: ubuntu-20.04
-            test-java-version: 17
-            coverage: true
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Git stuff
+        run: |
+          echo $(git status)
 
       - id: setup-java-test
         name: Set up Java ${{ matrix.test-java-version }} for tests
@@ -58,6 +54,10 @@ jobs:
             ${{ matrix.coverage && 'jacocoTestReport' || '' }}
             -PtestJavaVersion=${{ matrix.test-java-version }}
             -Porg.gradle.java.installations.paths=${{ steps.setup-java-test.outputs.path }},${{ steps.setup-java.outputs.path }}
+
+      - name: More Git stuff
+        run: |
+          echo $(git status)
 
       - name: Check for diff
         run: |
