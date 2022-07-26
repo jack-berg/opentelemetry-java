@@ -6,13 +6,13 @@
 package io.opentelemetry.sdk.logs.export;
 
 import static io.opentelemetry.sdk.logs.data.Severity.DEBUG;
-import static io.opentelemetry.sdk.logs.util.TestUtil.createLogData;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.opentelemetry.sdk.logs.LogEmitter;
 import io.opentelemetry.sdk.logs.SdkLogEmitterProvider;
 import io.opentelemetry.sdk.logs.data.LogData;
 import io.opentelemetry.sdk.testing.assertj.LogAssertions;
+import io.opentelemetry.sdk.testing.logs.TestLogData;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -42,9 +42,9 @@ class InMemoryLogExporterTest {
 
   @Test
   void getFinishedLogItems() {
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 1").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 2").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 3").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 1").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 2").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 3").emit();
 
     List<LogData> logItems = exporter.getFinishedLogItems();
     assertThat(logItems).isNotNull();
@@ -56,9 +56,9 @@ class InMemoryLogExporterTest {
 
   @Test
   void reset() {
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 1").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 2").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 3").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 1").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 2").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 3").emit();
     List<LogData> logItems = exporter.getFinishedLogItems();
     assertThat(logItems).isNotNull();
     assertThat(logItems.size()).isEqualTo(3);
@@ -69,9 +69,9 @@ class InMemoryLogExporterTest {
 
   @Test
   void shutdown() {
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 1").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 2").emit();
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 3").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 1").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 2").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 3").emit();
     List<LogData> logItems = exporter.getFinishedLogItems();
     assertThat(logItems).isNotNull();
     assertThat(logItems.size()).isEqualTo(3);
@@ -79,13 +79,13 @@ class InMemoryLogExporterTest {
     exporter.shutdown();
     assertThat(exporter.getFinishedLogItems()).isEmpty();
     // Cannot add new elements after the shutdown.
-    logEmitter.logBuilder().setSeverity(DEBUG).setBody("message 1").emit();
+    logEmitter.logRecordBuilder().setSeverity(DEBUG).setBody("message 1").emit();
     assertThat(exporter.getFinishedLogItems()).isEmpty();
   }
 
   @Test
   void export_ReturnCode() {
-    LogData logData = createLogData(DEBUG, "message 1");
+    LogData logData = TestLogData.builder().setBody("message 1").setSeverity(DEBUG).build();
     assertThat(exporter.export(Collections.singletonList(logData)).isSuccess()).isTrue();
     exporter.shutdown();
     // After shutdown no more export.

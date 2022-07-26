@@ -3,24 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.logs.data;
+package io.opentelemetry.sdk.logs;
 
 import com.google.auto.value.AutoValue;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.logs.data.Body;
+import io.opentelemetry.sdk.logs.data.LogData;
+import io.opentelemetry.sdk.logs.data.Severity;
 import io.opentelemetry.sdk.resources.Resource;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
 
-@AutoValue
-@AutoValue.CopyAnnotations
 @Immutable
-abstract class LogDataImpl implements LogData {
+@AutoValue.CopyAnnotations
+@AutoValue
+abstract class SdkLogData implements LogData {
 
-  LogDataImpl() {}
-
-  static LogDataImpl create(
+  static SdkLogData create(
       Resource resource,
       InstrumentationScopeInfo instrumentationScopeInfo,
       long epochNanos,
@@ -29,7 +30,7 @@ abstract class LogDataImpl implements LogData {
       @Nullable String severityText,
       Body body,
       Attributes attributes) {
-    return new AutoValue_LogDataImpl(
+    return new AutoValue_SdkLogData(
         resource,
         instrumentationScopeInfo,
         epochNanos,
@@ -39,4 +40,6 @@ abstract class LogDataImpl implements LogData {
         body,
         attributes);
   }
+
+  SdkLogData() {}
 }

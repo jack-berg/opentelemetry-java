@@ -6,7 +6,6 @@
 package io.opentelemetry.sdk.logs;
 
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
-import io.opentelemetry.sdk.logs.data.LogDataBuilder;
 
 /** SDK implementation of {@link LogEmitter}. */
 final class SdkLogEmitter implements LogEmitter {
@@ -22,13 +21,11 @@ final class SdkLogEmitter implements LogEmitter {
   }
 
   @Override
-  public LogBuilder logBuilder() {
-    LogDataBuilder logDataBuilder =
-        LogDataBuilder.create(
-            logEmitterSharedState.getResource(),
-            instrumentationScopeInfo,
-            logEmitterSharedState.getClock());
-    return new SdkLogBuilder(logEmitterSharedState, logDataBuilder);
+  public LogRecordBuilder logRecordBuilder() {
+    if (logEmitterSharedState.hasBeenShutdown()) {
+      return DefaultLogEmitter.getInstance().logRecordBuilder();
+    }
+    return new SdkLogRecordBuilder(logEmitterSharedState, instrumentationScopeInfo);
   }
 
   // VisibleForTesting
