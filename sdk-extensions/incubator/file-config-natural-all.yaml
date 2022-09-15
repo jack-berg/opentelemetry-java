@@ -1,4 +1,5 @@
 # This demonstrates a file configuration that falls out naturally from the SDK configuration options defined in the specification.
+# The configuration shown is a "kitchen sink" example, with all the available options shown for demonstration purposes.
 
 # User defined reusable elements
 shared:

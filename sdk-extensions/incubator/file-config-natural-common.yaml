@@ -1,0 +1,56 @@
+# This demonstrates a file configuration that falls out naturally from the SDK configuration options defined in the specification.
+# The configuration shown represents a more common use case.
+
+shared:
+  otlp_args: &otlpArgs
+    protocol: grpc
+    endpoint: https://my-remote-otlp-host.com:4317
+    headers:
+      api-key: $API_KEY
+    compression: gzip
+
+sdk:
+  resource:
+    detectors:
+      - name: *
+    attributes:
+      service.name: my-service
+      service.instance.id: $CONTAINER_ID
+  attribute_limits:
+    attribute_count_limit: 10
+    attribute_value_length_limit: 100
+  tracer_provider:
+    span_processors:
+      - name: batch
+        args:
+          exporter:
+            name: otlp
+            args: *otlpArgs
+    sampler:
+      name: parentbased
+      args:
+        root_sampler:
+          name: traceidratio
+          args:
+            ratio: 0.01
+  meter_provider:
+    metric_readers:
+      - name: periodic
+        args:
+          exporter:
+            name: otlp
+            args: *otlpArgs
+    views:
+      - selector:
+          instrument_name: "http.server.*.size"
+        view:
+          aggregation: drop
+  logger_provider:
+    log_record_processors:
+      - name: batch
+        args:
+          exporter:
+            name: otlp
+            args: *otlpArgs
+  propagators:
+    - name: tracecontext
