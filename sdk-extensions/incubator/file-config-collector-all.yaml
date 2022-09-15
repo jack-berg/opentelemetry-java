@@ -1,0 +1,100 @@
+# This demonstrates a file configuration that is inspired by the collector.
+#
+# The collector defines configuration for top level components (receivers, processors, exporters, and extensions). These components are composed into pipelines in the "service" section.
+#
+# This same type of configuration proves awkward for SDKs where configuration is quite different from signal to signal. There are a variety of collector receivers, processors, and exports which are not specific to a particular signal. E.g. otlp reciever and exporter, resource processor, transform processor, k8sprocessor, batch processor, etc. In the SDK, each signal has the concept of an exporter, and all share a resource, but that's it. Logs and spans have the concept of processor which is not shared by metrics. Spans have samplers, and span limits with no corollary in other signals. Metrics have views and metric readers with no corollary in other signals.
+#
+# Additionally, SDK log and span processors are conceptually different and more limited than collector processors: SDK processors can only enhance records with additional attributes and select other fields - they cannot filter attributes, change the resource, or generally mutate the records. SDK span and log exporters are not directly configurable in providers. They are only configurable as the handoff point of the built-in simple or batch processors. This means there's not a natural delineation between processors and exporters as in the collector. Each exporter is tightly coupled to a particular processor.
+#
+# A goal of the collector style of configuration is presumably to DRY up configuration. One could argue that an SDK file configuration schema which follows a more natural style would cause users to repeat the same exporter configuration for each signal if they want to use the most common OTLP exporter configuration. However, this is better solved with YAML anchors / alias, where objects can be anchored and reused in other portions of a YAML document.
+
+exporters:
+  logging:
+  otlp:
+    protocol: grpc
+    endpoint: http://localost:4317
+    headers:
+      api-key: $API_KEY
+    compression: gzip
+    timeout_millis: 30_000
+
+processors:
+  simple:
+    exporter: logging
+  batch/span:
+    exporter: otlp
+    max_queue_size: 100
+    scheduled_delay_millis: 1_000
+    export_timeout_millis: 30_000
+    max_export_batch_size: 200
+  batch/log:
+    exporter: otlp
+    max_queue_size: 50
+    scheduled_delay_millis: 500
+    export_timeout_millis: 30_000
+    max_export_batch_size: 100
+
+sdk:
+  resource:
+    detectors:
+      - name: io.opentelemetry.sdk.extension.resources.ContainerResourceProvider
+      - name: io.opentelemetry.sdk.extension.resources.HostResourceProvider
+      - name: io.opentelemetry.sdk.extension.resources.ProcessResourceProvider
+        excluded_attribute_keys:
+          - process.command_line
+    attributes:
+      service.name: my-service
+      service.instance.id: $CONTAINER_ID
+    schema_url: http://schema.com
+  attribute_limits:
+    attribute_count_limit: 10
+    attribute_value_length_limit: 100
+  tracer_provider:
+    span_processors: [ simple, batch ]
+    span_limits:
+      attribute_count_limit: 20
+      attribute_value_length_limit: 200
+      attribute_count_per_event_limit: 5
+      attribute_count_per_link_limit: 5
+      event_count_limit: 10
+      link_count_limit: 4
+    sampler:
+      name: parentbased
+      args:
+        root_sampler:
+          name: traceidratio
+          args:
+            ratio: 0.01
+  meter_provider:
+    metric_readers:
+      periodic/simple:
+        exporter: logging
+      periodic/batch:
+        exporter: exporter
+        interval_millis: 5_000
+    views:
+      - selector:
+          instrument_name: my-instrument
+          instrument_type: COUNTER
+          meter_name: my-meter
+          meter_version: 1.0.0
+          meter_schema_url: http://example.com
+        view:
+          name: new-instrument-name
+          description: new-description
+          aggregation:
+            name: explicit_bucket_histogram
+            args:
+              bucket_boundaries: [ 1.0, 2.0, 5.0 ]
+          attribute_keys:
+            - foo
+            - bar
+      - selector:
+          instrument_name: "*.server.duration"
+        view:
+          aggregation: drop
+  logger_provider:
+    log_record_processors: [ batch ]
+  propagators:
+    - name: tracecontext
+    - name: baggage

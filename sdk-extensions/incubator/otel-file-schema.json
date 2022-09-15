@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "otel-sdk.schema.json",
+  "title": "OpenTelemetry SDK Configuration",
+  "description": "A configuration specification for OpenTelemetry SDKs",
+  "type": "object",
+  "properties": {
+    "resource": {
+      "type": "object",
+      "properties": {
+        "attributes": {
+          "type": "object"
+        },
+        "schema_url": {
+          "type": "string"
+        }
+      }
+    },
+    "tracer_provider": {
+      "type": "object",
+      "properties": {
+        "span_processors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "args": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "exporter": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

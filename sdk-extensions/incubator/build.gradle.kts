@@ -28,6 +28,8 @@ dependencies {
 
   testImplementation(project(":sdk:testing"))
   testImplementation(project(":sdk-extensions:autoconfigure"))
+  testImplementation(project(":exporters:logging"))
+  testImplementation(project(":exporters:otlp:all"))
 
   testImplementation("com.google.guava:guava-testlib")
 }
