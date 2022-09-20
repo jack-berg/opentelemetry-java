@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.extension.incubator.fileconfig;
+package io.opentelemetry.sdk.extension.fileconfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+
 import org.junit.jupiter.api.Test;
 
 class SpanLimitsSchemaTest {
@@ -17,7 +18,7 @@ class SpanLimitsSchemaTest {
           new File(System.getProperty("otel.sdk-schema-dir")),
           "https://opentelemetry.io/schemas/sdkconfig",
           new File(System.getProperty("otel.sdk-schema-dir") + "/span_limits.json"),
-          "/sdk-schema/span_limits");
+          "/span_limits");
 
   @Test
   void allFields() {

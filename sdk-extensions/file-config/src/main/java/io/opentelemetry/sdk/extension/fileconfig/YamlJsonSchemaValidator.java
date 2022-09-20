@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.extension.incubator.fileconfig;
+package io.opentelemetry.sdk.extension.fileconfig;
 
 import static java.util.stream.Collectors.toSet;
 
@@ -22,7 +22,6 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import org.yaml.snakeyaml.Yaml;
 
 class YamlJsonSchemaValidator {

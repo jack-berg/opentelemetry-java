@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.extension.incubator.fileconfig;
+package io.opentelemetry.sdk.extension.fileconfig;
 
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +18,7 @@ class ViewEntrySchemaTest {
           new File(System.getProperty("otel.sdk-schema-dir")),
           "https://opentelemetry.io/schemas/sdkconfig",
           new File(System.getProperty("otel.sdk-schema-dir") + "/view_entry.json"),
-          "/sdk-schema/view_entry");
+              "/view_entry");
 
   @Test
   void allFields() {

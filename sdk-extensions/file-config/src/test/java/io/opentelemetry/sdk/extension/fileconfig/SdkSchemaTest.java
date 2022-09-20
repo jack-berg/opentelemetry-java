@@ -3,13 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.extension.incubator.fileconfig;
-
-import org.junit.jupiter.api.Test;
-
-import java.io.File;
+package io.opentelemetry.sdk.extension.fileconfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.File;
+import org.junit.jupiter.api.Test;
 
 class SdkSchemaTest {
 
@@ -18,7 +17,7 @@ class SdkSchemaTest {
           new File(System.getProperty("otel.sdk-schema-dir")),
           "https://opentelemetry.io/schemas/sdkconfig",
           new File(System.getProperty("otel.sdk-schema-dir") + "/sdk.json"),
-          "/sdk-schema/sdk");
+          "/sdk");
 
   @Test
   void kitchenSink() {

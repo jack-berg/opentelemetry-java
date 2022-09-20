@@ -28,17 +28,6 @@ dependencies {
 
   testImplementation(project(":sdk:testing"))
   testImplementation(project(":sdk-extensions:autoconfigure"))
-  testImplementation(project(":exporters:logging"))
-  testImplementation(project(":exporters:otlp:all"))
 
-  testImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.10.1")
-  testImplementation("com.networknt:json-schema-validator:1.0.72")
   testImplementation("com.google.guava:guava-testlib")
-}
-
-tasks {
-  test {
-    System.out.println(project.projectDir)
-    systemProperty("otel.sdk-schema-dir", project.projectDir.toString() + "/sdk-schema")
-  }
 }
