@@ -35,3 +35,10 @@ dependencies {
   testImplementation("com.networknt:json-schema-validator:1.0.72")
   testImplementation("com.google.guava:guava-testlib")
 }
+
+tasks {
+  test {
+    System.out.println(project.projectDir)
+    systemProperty("otel.sdk-schema-dir", project.projectDir.toString() + "/sdk-schema")
+  }
+}

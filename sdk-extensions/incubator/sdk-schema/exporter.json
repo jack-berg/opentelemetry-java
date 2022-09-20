@@ -1,0 +1,10 @@
+{
+  "$id": "https://opentelemetry.io/schemas/sdkconfig/exporter",
+  "title": "OpenTelemetry Exporter Configuration",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" },
+    "args": { "type": "object" }
+  }
+}

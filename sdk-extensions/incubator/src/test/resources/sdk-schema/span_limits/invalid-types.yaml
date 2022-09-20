@@ -1,0 +1,6 @@
+attribute_count_limit: foo
+attribute_value_length_limit: foo
+attribute_count_per_event_limit: foo
+attribute_count_per_link_limit: foo
+event_count_limit: foo
+link_count_limit: foo
