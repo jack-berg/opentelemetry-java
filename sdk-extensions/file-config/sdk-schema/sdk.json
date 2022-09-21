@@ -9,6 +9,7 @@
       "properties": {
         "disabled": { "type": "boolean" },
         "resource": { "$ref": "/schemas/sdkconfig/resource" },
+        "logging": { "$ref": "/schemas/sdkconfig/logging" },
         "attribute_limits": { "$ref": "/schemas/sdkconfig/attribute_limits" },
         "tracer_provider": {
           "type": "object",

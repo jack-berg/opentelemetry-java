@@ -32,6 +32,9 @@ sdk:
       service.instance.id: 1234
     # The resource schema URL.
     schema_url: http://schema.com
+  # Configure SDK logging.
+  logging:
+    level: info
   # General attribute limits, applies to span and log attributes.
   attribute_limits:
     attribute_count_limit: 10

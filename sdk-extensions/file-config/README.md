@@ -8,7 +8,7 @@ There's been [discussion](https://github.com/open-telemetry/opentelemetry-specif
 about file based configuration in the specification for some time. Let's review the discussion:
 
 The [environment configuration specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md)
-is useful, but its flat structure is limiting and continual expansion is becoming unmanageable. 
+is useful, but its flat structure is limiting and continual expansion is becoming unmanageable.
 Some examples:
 
 * [Views](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#view)
