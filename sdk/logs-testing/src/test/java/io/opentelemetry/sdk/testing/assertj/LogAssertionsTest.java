@@ -5,10 +5,10 @@
 
 package io.opentelemetry.sdk.testing.assertj;
 
-import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static io.opentelemetry.sdk.testing.assertj.LogAssertions.assertThat;
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.attributeEntry;
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.equalTo;
+import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.satisfies;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.opentelemetry.api.common.AttributeKey;
@@ -26,8 +26,9 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 public class LogAssertionsTest {
+  private static final AttributeKey<String> DOG = AttributeKey.stringKey("dog");
   private static final Resource RESOURCE =
-      Resource.create(Attributes.of(stringKey("resource_key"), "resource_value"));
+      Resource.create(Attributes.of(DOG, "bark"));
   private static final InstrumentationScopeInfo INSTRUMENTATION_SCOPE_INFO =
       InstrumentationScopeInfo.create("instrumentation_library");
   private static final String TRACE_ID = "00000000000000010000000000000002";
@@ -63,6 +64,33 @@ public class LogAssertionsTest {
   void passing() {
     assertThat(LOG_DATA)
         .hasResource(RESOURCE)
+        .hasResource(RESOURCE)
+        .hasResourceSatisfying(
+            resource ->
+                resource
+                    .hasSchemaUrl(null)
+                    .hasAttribute(DOG, "bark")
+                    .hasAttributes(
+                        Attributes.of(DOG, "bark"))
+                    .hasAttributes(
+                        attributeEntry("dog", "bark"))
+                    .hasAttributesSatisfying(
+                        attributes ->
+                            OpenTelemetryAssertions.assertThat(attributes)
+                                .hasSize(1)
+                                .containsEntry(AttributeKey.stringKey("dog"), "bark")
+                                .hasEntrySatisfying(DOG, value -> assertThat(value).hasSize(4))))
+        .hasResourceSatisfying(
+            resource ->
+                resource.hasAttributesSatisfying(satisfies(DOG, val -> val.isEqualTo("bark"))))
+        .hasResourceSatisfying(
+            resource ->
+                resource.hasAttributesSatisfyingExactly(
+                    equalTo(DOG, "bark")))
+        .hasResourceSatisfying(
+            resource ->
+                resource.hasAttributesSatisfyingExactly(
+                    satisfies(DOG, val -> val.startsWith("bar"))))
         .hasInstrumentationScope(INSTRUMENTATION_SCOPE_INFO)
         .hasEpochNanos(100)
         .hasSpanContext(
@@ -130,6 +158,62 @@ public class LogAssertionsTest {
   @Test
   void failure() {
     assertThatThrownBy(() -> assertThat(LOG_DATA).hasResource(Resource.empty()));
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(resource -> resource.hasSchemaUrl("http://example.com")))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(resource -> resource.hasAttribute(DOG, "meow")))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource -> resource.hasAttributes(Attributes.of(DOG, "bark", AttributeKey.stringKey("foo"), "bar"))))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource ->
+                        resource.hasAttributesSatisfying(
+                            attributes -> OpenTelemetryAssertions.assertThat(attributes).hasSize(2))))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource ->
+                        resource.hasAttributesSatisfying(
+                            attributes ->
+                                OpenTelemetryAssertions.assertThat(attributes)
+                                    .containsEntry(AttributeKey.stringKey("dog"), "meow"))))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource ->
+                        resource.hasAttributesSatisfying(
+                            satisfies(DOG, val -> val.isEqualTo("meow")))))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource -> resource.hasAttributesSatisfyingExactly(equalTo(DOG, "meow"))))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(
+        () ->
+            assertThat(LOG_DATA)
+                .hasResourceSatisfying(
+                    resource ->
+                        resource.hasAttributesSatisfyingExactly(
+                            satisfies(DOG, val -> val.isEqualTo("meow")))))
+        .isInstanceOf(AssertionError.class);
     assertThatThrownBy(
         () -> assertThat(LOG_DATA).hasInstrumentationScope(InstrumentationScopeInfo.empty()));
     assertThatThrownBy(() -> assertThat(LOG_DATA).hasEpochNanos(200));
