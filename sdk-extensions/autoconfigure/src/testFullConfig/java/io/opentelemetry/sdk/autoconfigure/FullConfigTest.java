@@ -46,11 +46,13 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -156,6 +158,8 @@ class FullConfigTest {
     String endpoint = "http://localhost:" + server.httpPort();
     System.setProperty("otel.exporter.otlp.endpoint", endpoint);
     System.setProperty("otel.exporter.otlp.timeout", "10000");
+    // Set log exporter interval to a high value and rely on flushing to produce reliable export batches
+    System.setProperty("otel.blrp.schedule.delay", "60000");
 
     // Initialize here so we can shutdown when done
     GlobalOpenTelemetry.resetForTest();
@@ -173,6 +177,7 @@ class FullConfigTest {
   }
 
   @Test
+  @RepeatedTest(10)
   void configures() throws Exception {
     Collection<String> fields =
         GlobalOpenTelemetry.get().getPropagators().getTextMapPropagator().fields();
