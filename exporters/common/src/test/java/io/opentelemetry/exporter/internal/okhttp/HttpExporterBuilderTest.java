@@ -7,21 +7,23 @@ package io.opentelemetry.exporter.internal.okhttp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.opentelemetry.exporter.internal.http.HttpExporter;
+import io.opentelemetry.exporter.internal.http.HttpExporterBuilder;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import org.junit.jupiter.api.Test;
 
-class OkHttpExporterBuilderTest {
+class HttpExporterBuilderTest {
 
-  private final OkHttpExporterBuilder<Marshaler> builder =
-      new OkHttpExporterBuilder<>("otlp", "span", "http://localhost:4318/v1/traces");
+  private final HttpExporterBuilder<Marshaler> builder =
+      new HttpExporterBuilder<>("otlp", "span", "http://localhost:4318/v1/traces");
 
   @Test
   void compressionDefault() {
-    OkHttpExporter<Marshaler> exporter = builder.build();
+    HttpExporter<Marshaler> exporter = builder.build();
     try {
       assertThat(exporter)
           .isInstanceOfSatisfying(
-              OkHttpExporter.class,
+              HttpExporter.class,
               otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();
@@ -30,11 +32,11 @@ class OkHttpExporterBuilderTest {
 
   @Test
   void compressionNone() {
-    OkHttpExporter<Marshaler> exporter = builder.setCompression("none").build();
+    HttpExporter<Marshaler> exporter = builder.setCompression("none").build();
     try {
       assertThat(exporter)
           .isInstanceOfSatisfying(
-              OkHttpExporter.class,
+              HttpExporter.class,
               otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();
@@ -43,11 +45,11 @@ class OkHttpExporterBuilderTest {
 
   @Test
   void compressionGzip() {
-    OkHttpExporter<Marshaler> exporter = builder.setCompression("gzip").build();
+    HttpExporter<Marshaler> exporter = builder.setCompression("gzip").build();
     try {
       assertThat(exporter)
           .isInstanceOfSatisfying(
-              OkHttpExporter.class,
+              HttpExporter.class,
               otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(true));
     } finally {
       exporter.shutdown();
@@ -56,12 +58,12 @@ class OkHttpExporterBuilderTest {
 
   @Test
   void compressionEnabledAndDisabled() {
-    OkHttpExporter<Marshaler> exporter =
+    HttpExporter<Marshaler> exporter =
         builder.setCompression("gzip").setCompression("none").build();
     try {
       assertThat(exporter)
           .isInstanceOfSatisfying(
-              OkHttpExporter.class,
+              HttpExporter.class,
               otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();

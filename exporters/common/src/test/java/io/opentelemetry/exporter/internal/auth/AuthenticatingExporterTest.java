@@ -10,10 +10,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.testing.junit5.server.mock.MockWebServerExtension;
+import io.opentelemetry.exporter.internal.http.HttpExporter;
+import io.opentelemetry.exporter.internal.http.HttpExporterBuilder;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.exporter.internal.marshal.Serializer;
-import io.opentelemetry.exporter.internal.okhttp.OkHttpExporter;
-import io.opentelemetry.exporter.internal.okhttp.OkHttpExporterBuilder;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.io.IOException;
 import java.util.Collections;
@@ -43,8 +43,8 @@ class AuthenticatingExporterTest {
 
   @Test
   void export() throws Exception {
-    OkHttpExporter<Marshaler> exporter =
-        new OkHttpExporterBuilder<>("otlp", "test", server.httpUri().toASCIIString())
+    HttpExporter<Marshaler> exporter =
+        new HttpExporterBuilder<>("otlp", "test", server.httpUri().toASCIIString())
             .setAuthenticator(
                 () -> {
                   Map<String, String> headers = new HashMap<>();
@@ -68,8 +68,8 @@ class AuthenticatingExporterTest {
   /** Ensure that exporter gives up if a request is always considered UNAUTHORIZED. */
   @Test
   void export_giveup() throws Exception {
-    OkHttpExporter<Marshaler> exporter =
-        new OkHttpExporterBuilder<>("otlp", "test", server.httpUri().toASCIIString())
+    HttpExporter<Marshaler> exporter =
+        new HttpExporterBuilder<>("otlp", "test", server.httpUri().toASCIIString())
             .setAuthenticator(
                 () -> {
                   server.enqueue(HttpResponse.of(HttpStatus.UNAUTHORIZED));
