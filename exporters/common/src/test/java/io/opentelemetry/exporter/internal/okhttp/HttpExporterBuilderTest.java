@@ -24,7 +24,8 @@ class HttpExporterBuilderTest {
       assertThat(exporter)
           .isInstanceOfSatisfying(
               HttpExporter.class,
-              otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
+              otlp ->
+                  assertThat(otlp).extracting("httpSender.compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();
     }
@@ -37,7 +38,8 @@ class HttpExporterBuilderTest {
       assertThat(exporter)
           .isInstanceOfSatisfying(
               HttpExporter.class,
-              otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
+              otlp ->
+                  assertThat(otlp).extracting("httpSender.compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();
     }
@@ -50,7 +52,7 @@ class HttpExporterBuilderTest {
       assertThat(exporter)
           .isInstanceOfSatisfying(
               HttpExporter.class,
-              otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(true));
+              otlp -> assertThat(otlp).extracting("httpSender.compressionEnabled").isEqualTo(true));
     } finally {
       exporter.shutdown();
     }
@@ -64,7 +66,8 @@ class HttpExporterBuilderTest {
       assertThat(exporter)
           .isInstanceOfSatisfying(
               HttpExporter.class,
-              otlp -> assertThat(otlp).extracting("compressionEnabled").isEqualTo(false));
+              otlp ->
+                  assertThat(otlp).extracting("httpSender.compressionEnabled").isEqualTo(false));
     } finally {
       exporter.shutdown();
     }

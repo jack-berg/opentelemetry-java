@@ -21,10 +21,11 @@ public interface HttpSender {
       String endpoint,
       boolean compressionEnabled,
       Supplier<Map<String, String>> headerSupplier,
+      @Nullable RetryPolicyCopy retryPolicyCopy,
       @Nullable SSLSocketFactory socketFactory,
       @Nullable X509TrustManager trustManager) {
     return new JdkHttpSender(
-        endpoint, compressionEnabled, headerSupplier, socketFactory, trustManager);
+        endpoint, compressionEnabled, headerSupplier, retryPolicyCopy, socketFactory, trustManager);
   }
 
   void send(

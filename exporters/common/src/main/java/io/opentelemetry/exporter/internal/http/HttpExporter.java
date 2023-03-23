@@ -9,8 +9,6 @@ import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.internal.ExporterMetrics;
 import io.opentelemetry.exporter.internal.grpc.GrpcStatusUtil;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
-import io.opentelemetry.exporter.internal.retry.RetryPolicy;
-import io.opentelemetry.exporter.internal.retry.RetryUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.internal.ThrottlingLogger;
 import java.io.IOException;
@@ -38,18 +36,15 @@ public final class HttpExporter<T extends Marshaler> {
 
   private final String type;
   private final HttpSender httpSender;
-  private final RetryPolicy retryPolicy;
   private final ExporterMetrics exporterMetrics;
 
   HttpExporter(
       String exporterName,
       String type,
       HttpSender httpSender,
-      RetryPolicy retryPolicy,
       Supplier<MeterProvider> meterProviderSupplier) {
     this.type = type;
     this.httpSender = httpSender;
-    this.retryPolicy = retryPolicy;
     this.exporterMetrics =
         ExporterMetrics.createHttpProtobuf(exporterName, type, meterProviderSupplier);
   }
@@ -125,10 +120,6 @@ public final class HttpExporter<T extends Marshaler> {
       return CompletableResultCode.ofSuccess();
     }
     return httpSender.shutdown();
-  }
-
-  static boolean isRetryable(int statusCode) {
-    return RetryUtil.retryableHttpResponseCodes().contains(statusCode);
   }
 
   private static String extractErrorStatus(String statusMessage, @Nullable byte[] responseBody) {

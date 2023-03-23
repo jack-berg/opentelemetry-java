@@ -130,13 +130,35 @@ public final class HttpExporterBuilder<T extends Marshaler> {
   }
 
   public HttpExporter<T> build() {
+
+    RetryPolicyCopy retryPolicyCopy = null;
+    if (retryPolicy != null) {
+      retryPolicyCopy =
+          new RetryPolicyCopy(
+              retryPolicy.getMaxAttempts(),
+              retryPolicy.getInitialBackoff(),
+              retryPolicy.getMaxBackoff(),
+              retryPolicy.getBackoffMultiplier());
+    }
+
     Map<String, String> headers = this.headers == null ? Collections.emptyMap() : this.headers;
+    Supplier<Map<String, String>> headerSupplier = () -> headers;
+    if (authenticator != null) {
+      Authenticator auth = authenticator;
+      headerSupplier =
+          () -> {
+            Map<String, String> headersCopy = new HashMap<>(headers);
+            headersCopy.putAll(auth.getHeaders());
+            return headersCopy;
+          };
+    }
 
     HttpSender sender =
         HttpSender.create(
             endpoint,
             compressionEnabled,
-            () -> headers,
+            headerSupplier,
+            retryPolicyCopy,
             tlsConfigHelper.getSslSocketFactory(),
             tlsConfigHelper.getTrustManager());
 

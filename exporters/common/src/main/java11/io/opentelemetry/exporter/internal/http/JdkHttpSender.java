@@ -15,7 +15,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.zip.GZIPOutputStream;
@@ -31,11 +36,13 @@ public class JdkHttpSender implements HttpSender {
   private final URI uri;
   private final boolean compressionEnabled;
   private final Supplier<Map<String, String>> headerSupplier;
+  private final RetryPolicyCopy retryPolicyCopy;
 
   JdkHttpSender(
       String endpoint,
       boolean compressionEnabled,
       Supplier<Map<String, String>> headerSupplier,
+      @Nullable RetryPolicyCopy retryPolicyCopy,
       @Nullable SSLSocketFactory socketFactory,
       @Nullable X509TrustManager trustManager) {
     HttpClient.Builder builder = HttpClient.newBuilder();
@@ -48,6 +55,10 @@ public class JdkHttpSender implements HttpSender {
     }
     this.compressionEnabled = compressionEnabled;
     this.headerSupplier = headerSupplier;
+    this.retryPolicyCopy =
+        retryPolicyCopy == null
+            ? new RetryPolicyCopy(1, Duration.ZERO, Duration.ZERO, 0)
+            : retryPolicyCopy;
   }
 
   private static void maybeConfigSSL(
@@ -68,6 +79,9 @@ public class JdkHttpSender implements HttpSender {
     builder.sslContext(context);
   }
 
+  private static final Set<Integer> retryableStatusCodes =
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList(429, 502, 503, 504)));
+
   @Override
   public void send(
       Consumer<OutputStream> marshaler,
@@ -77,11 +91,13 @@ public class JdkHttpSender implements HttpSender {
     HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
     headerSupplier.get().forEach(requestBuilder::setHeader);
 
+    // todo: timeout
+    // TODO: avoid byte baos?
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
     if (compressionEnabled) {
-      try {
-        GZIPOutputStream gzos = new GZIPOutputStream(baos);
+      requestBuilder.header("Content-Encoding", "gzip");
+      try (GZIPOutputStream gzos = new GZIPOutputStream(baos)) {
         marshaler.accept(gzos);
       } catch (IOException e) {
         throw new RuntimeException(e);
@@ -94,35 +110,60 @@ public class JdkHttpSender implements HttpSender {
     requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(baos.toByteArray()));
     requestBuilder.header("Content-Type", "application/x-protobuf");
 
-    // TODO: avoid byte baos?
+    HttpResponse response = null;
+    Exception exception = null;
+    int attempt = 0;
+    long nextBackoffNanos = retryPolicyCopy.initialBackoff.toNanos();
+    while (attempt < retryPolicyCopy.maxAttempts) {
+      // Compute timeout
+      // TODO: sleep for backoff if needed
+      try {
+        response = send(requestBuilder);
+      } catch (Exception e) {
+        exception = e;
+      }
+      if (response != null && !retryableStatusCodes.contains(response.statusCode())) {
+        onResponse.accept(response);
+        return;
+      }
+      // TODO: determine which exceptions are retryable
+      if (exception != null) {
+        onFailure.accept(exception);
+        return;
+      }
+      attempt++;
+    }
 
-    client
-        .sendAsync(requestBuilder.build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray())
-        .whenComplete(
-            (httpResponse, throwable) -> {
-              if (throwable != null) {
-                onFailure.accept(throwable);
-                return;
-              }
+    if (response != null) {
+      onResponse.accept(response);
+    } else {
+      onFailure.accept(exception);
+    }
+  }
 
-              onResponse.accept(
-                  new HttpResponse() {
-                    @Override
-                    public int statusCode() {
-                      return httpResponse.statusCode();
-                    }
+  private HttpResponse send(HttpRequest.Builder requestBuilder) throws Exception {
+    java.net.http.HttpResponse<byte[]> send =
+        client.send(requestBuilder.build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+    return toHttpResponse(send);
+  }
 
-                    @Override
-                    public String statusMessage() {
-                      return String.valueOf(httpResponse.statusCode());
-                    }
+  private static HttpResponse toHttpResponse(java.net.http.HttpResponse<byte[]> response) {
+    return new HttpResponse() {
+      @Override
+      public int statusCode() {
+        return response.statusCode();
+      }
 
-                    @Override
-                    public byte[] responseBody() {
-                      return httpResponse.body();
-                    }
-                  });
-            });
+      @Override
+      public String statusMessage() {
+        return String.valueOf(response.statusCode());
+      }
+
+      @Override
+      public byte[] responseBody() {
+        return response.body();
+      }
+    };
   }
 
   @Override

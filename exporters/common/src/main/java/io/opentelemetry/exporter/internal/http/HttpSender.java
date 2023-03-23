@@ -21,10 +21,11 @@ public interface HttpSender {
       String endpoint,
       boolean compressionEnabled,
       Supplier<Map<String, String>> headerSupplier,
+      @Nullable RetryPolicyCopy retryPolicy,
       @Nullable SSLSocketFactory socketFactory,
       @Nullable X509TrustManager trustManager) {
     return new OkHttpSender(
-        endpoint, compressionEnabled, headerSupplier, socketFactory, trustManager);
+        endpoint, compressionEnabled, headerSupplier, retryPolicy, socketFactory, trustManager);
   }
 
   void send(

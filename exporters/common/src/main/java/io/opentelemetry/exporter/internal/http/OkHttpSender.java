@@ -5,6 +5,9 @@
 
 package io.opentelemetry.exporter.internal.http;
 
+import io.opentelemetry.exporter.internal.retry.RetryInterceptor;
+import io.opentelemetry.exporter.internal.retry.RetryPolicy;
+import io.opentelemetry.exporter.internal.retry.RetryUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -38,9 +41,20 @@ public class OkHttpSender implements HttpSender {
       String endpoint,
       boolean compressionEnabled,
       Supplier<Map<String, String>> headerSupplier,
+      @Nullable RetryPolicyCopy retryPolicyCopy,
       @Nullable SSLSocketFactory socketFactory,
       @Nullable X509TrustManager trustManager) {
     OkHttpClient.Builder builder = new OkHttpClient.Builder();
+    if (retryPolicyCopy != null) {
+      RetryPolicy retryPolicy =
+          RetryPolicy.builder()
+              .setMaxAttempts(retryPolicyCopy.maxAttempts)
+              .setInitialBackoff(retryPolicyCopy.initialBackoff)
+              .setMaxBackoff(retryPolicyCopy.maxBackoff)
+              .setBackoffMultiplier(retryPolicyCopy.backoffMultiplier)
+              .build();
+      builder.addInterceptor(new RetryInterceptor(retryPolicy, OkHttpSender::isRetryable));
+    }
     if (socketFactory != null && trustManager != null) {
       builder.sslSocketFactory(socketFactory, trustManager);
     }
@@ -106,6 +120,10 @@ public class OkHttpSender implements HttpSender {
     client.dispatcher().executorService().shutdownNow();
     client.connectionPool().evictAll();
     return CompletableResultCode.ofSuccess();
+  }
+
+  static boolean isRetryable(Response response) {
+    return RetryUtil.retryableHttpResponseCodes().contains(response.code());
   }
 
   private static class ProtoRequestBody extends RequestBody {
