@@ -15,7 +15,7 @@ import java.io.InputStream;
 import javax.annotation.Nullable;
 
 // Adapted from the protoc generated code for TraceServiceGrpc.
-final class MarshalerTraceServiceGrpc {
+public final class MarshalerTraceServiceGrpc {
 
   private static final String SERVICE_NAME = "opentelemetry.proto.collector.trace.v1.TraceService";
 
@@ -54,14 +54,14 @@ final class MarshalerTraceServiceGrpc {
               .setResponseMarshaller(RESPONSE_MARSHALER)
               .build();
 
-  static TraceServiceFutureStub newFutureStub(
+  public static TraceServiceFutureStub newFutureStub(
       io.grpc.Channel channel, @Nullable String authorityOverride) {
     return TraceServiceFutureStub.newStub(
         (c, options) -> new TraceServiceFutureStub(c, options.withAuthority(authorityOverride)),
         channel);
   }
 
-  static final class TraceServiceFutureStub
+  public static final class TraceServiceFutureStub
       extends MarshalerServiceStub<
           TraceRequestMarshaler, ExportTraceServiceResponse, TraceServiceFutureStub> {
     private TraceServiceFutureStub(io.grpc.Channel channel, io.grpc.CallOptions callOptions) {

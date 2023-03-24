@@ -38,7 +38,7 @@ public final class HttpExporter<T extends Marshaler> {
   private final HttpSender httpSender;
   private final ExporterMetrics exporterMetrics;
 
-  HttpExporter(
+  public HttpExporter(
       String exporterName,
       String type,
       HttpSender httpSender,

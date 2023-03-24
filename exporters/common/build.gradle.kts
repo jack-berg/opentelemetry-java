@@ -2,6 +2,7 @@ plugins {
   id("otel.java-conventions")
   id("otel.publish-conventions")
 
+  id("otel.jmh-conventions")
   id("otel.animalsniffer-conventions")
 }
 
@@ -36,6 +37,15 @@ dependencies {
   testImplementation("com.google.api.grpc:proto-google-common-protos")
   testImplementation("io.grpc:grpc-testing")
   testRuntimeOnly("io.grpc:grpc-netty-shaded")
+
+  jmhImplementation(project(":sdk:testing"))
+  jmhImplementation(project(":exporters:otlp:all"))
+  jmhImplementation(project(":exporters:otlp:common"))
+  jmhImplementation("com.linecorp.armeria:armeria")
+  jmhImplementation("com.linecorp.armeria:armeria-grpc")
+  jmhImplementation("io.opentelemetry.proto:opentelemetry-proto")
+  jmhRuntimeOnly("com.squareup.okhttp3:okhttp")
+  jmhRuntimeOnly("io.grpc:grpc-netty")
 }
 
 sourceSets {

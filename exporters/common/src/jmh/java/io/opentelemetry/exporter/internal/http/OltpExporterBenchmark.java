@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.exporter.otlp.trace;
+package io.opentelemetry.exporter.internal.http;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.Server;
@@ -11,15 +11,17 @@ import com.linecorp.armeria.server.grpc.GrpcService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.internal.grpc.GrpcExporter;
-import io.opentelemetry.exporter.internal.okhttp.OkHttpExporter;
-import io.opentelemetry.exporter.internal.okhttp.OkHttpExporterBuilder;
 import io.opentelemetry.exporter.internal.otlp.traces.TraceRequestMarshaler;
+import io.opentelemetry.exporter.otlp.trace.MarshalerTraceServiceGrpc;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporterBuilder;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
 import io.opentelemetry.proto.collector.trace.v1.TraceServiceGrpc;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.net.URI;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -64,7 +66,8 @@ public class OltpExporterBenchmark {
 
   private static GrpcExporter<TraceRequestMarshaler> defaultGrpcExporter;
   private static GrpcExporter<TraceRequestMarshaler> okhttpGrpcExporter;
-  private static OkHttpExporter<TraceRequestMarshaler> httpExporter;
+  private static HttpExporter<TraceRequestMarshaler> okHttpHttpExporter;
+  private static HttpExporter<TraceRequestMarshaler> jdkHttpExporter;
 
   @Setup(Level.Trial)
   public void setUp() {
@@ -95,17 +98,35 @@ public class OltpExporterBenchmark {
                 OtlpGrpcSpanExporterBuilder.GRPC_ENDPOINT_PATH)
             .build();
 
-    httpExporter =
-        new OkHttpExporterBuilder<TraceRequestMarshaler>(
-                "otlp", "span", "http://localhost:" + server.activeLocalPort() + "/v1/traces")
-            .build();
+    okHttpHttpExporter = new HttpExporter<>("otlp", "span", new OkHttpSender(
+        "http://localhost:" + server.activeLocalPort() + "/v1/traces",
+        false,
+        Collections::emptyMap,
+        null,
+        null,
+        null
+    ), MeterProvider::noop);
+
+    HttpSender jdkHttpSender = HttpSender.create(
+        "http://localhost:" + server.activeLocalPort() + "/v1/traces",
+        false,
+        Collections::emptyMap,
+        null,
+        null,
+        null
+    );
+    if (!jdkHttpSender.getClass().getSimpleName().equals("JdkHttpSender")) {
+      throw new IllegalStateException("Must run with java 11+: -PtestJavaVersion=11");
+    }
+    jdkHttpExporter = new HttpExporter<>("otlp", "span", jdkHttpSender, MeterProvider::noop);
   }
 
   @TearDown(Level.Trial)
   public void tearDown() {
     defaultGrpcExporter.shutdown().join(10, TimeUnit.SECONDS);
     okhttpGrpcExporter.shutdown().join(10, TimeUnit.SECONDS);
-    httpExporter.shutdown().join(10, TimeUnit.SECONDS);
+    okHttpHttpExporter.shutdown().join(10, TimeUnit.SECONDS);
+    jdkHttpExporter.shutdown().join(10, TimeUnit.SECONDS);
     defaultGrpcChannel.shutdownNow();
     server.stop().join();
   }
@@ -135,9 +156,19 @@ public class OltpExporterBenchmark {
   }
 
   @Benchmark
-  public CompletableResultCode httpExporter(RequestMarshalState state) {
+  public CompletableResultCode okHttpHttpExporter(RequestMarshalState state) {
     CompletableResultCode result =
-        httpExporter.export(state.traceRequestMarshaler, state.numSpans).join(10, TimeUnit.SECONDS);
+        okHttpHttpExporter.export(state.traceRequestMarshaler, state.numSpans).join(10, TimeUnit.SECONDS);
+    if (!result.isSuccess()) {
+      throw new AssertionError();
+    }
+    return result;
+  }
+
+  @Benchmark
+  public CompletableResultCode jdkHttpExporter(RequestMarshalState state) {
+    CompletableResultCode result =
+        okHttpHttpExporter.export(state.traceRequestMarshaler, state.numSpans).join(10, TimeUnit.SECONDS);
     if (!result.isSuccess()) {
       throw new AssertionError();
     }
