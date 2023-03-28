@@ -5,24 +5,22 @@
 
 package io.opentelemetry.exporter.internal.http;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.server.Server;
-import com.linecorp.armeria.server.grpc.GrpcService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.stub.StreamObserver;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.internal.grpc.GrpcExporter;
 import io.opentelemetry.exporter.internal.otlp.traces.TraceRequestMarshaler;
 import io.opentelemetry.exporter.otlp.trace.MarshalerTraceServiceGrpc;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporterBuilder;
-import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
-import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
-import io.opentelemetry.proto.collector.trace.v1.TraceServiceGrpc;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.net.URI;
+import java.util.AbstractMap;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -44,36 +42,22 @@ import org.openjdk.jmh.annotations.Warmup;
 @Fork(1)
 @State(Scope.Benchmark)
 public class OltpExporterBenchmark {
+  private static final MediaType GRPC_PROTO = MediaType.parse("application/grpc+proto");
+  private static final List<Map.Entry<String, String>> GRPC_TRAILERS =
+      Collections.singletonList(new AbstractMap.SimpleEntry<>("grpc-status", "0"));
+  private static final byte[] GRPC_CONTENT = new byte[] {0, 0, 0, 0, 0};
+
   private static final Server server =
       Server.builder()
           .service(
-              GrpcService.builder()
-                  .addService(
-                      new TraceServiceGrpc.TraceServiceImplBase() {
-                        @Override
-                        public void export(
-                            ExportTraceServiceRequest request,
-                            StreamObserver<ExportTraceServiceResponse> responseObserver) {
-                          responseObserver.onNext(ExportTraceServiceResponse.getDefaultInstance());
-                          responseObserver.onCompleted();
-                        }
-                      })
-                  .build())
-          .service(
-              "/v1/traces",
+              OtlpGrpcSpanExporterBuilder.GRPC_ENDPOINT_PATH,
               (ctx, req) ->
-                  HttpResponse.from(
-                      req.aggregate()
-                          .thenApply(
-                              aggregatedHttpRequest -> {
-                                try {
-                                  ExportTraceServiceRequest.parseFrom(
-                                      aggregatedHttpRequest.content().array());
-                                } catch (InvalidProtocolBufferException e) {
-                                  throw new RuntimeException(e);
-                                }
-                                return HttpResponse.of(200);
-                              })))
+                  HttpResponse.builder()
+                      .status(200)
+                      .trailers(GRPC_TRAILERS)
+                      .content(GRPC_PROTO, GRPC_CONTENT)
+                      .build())
+          .service("/v1/traces", (ctx, req) -> HttpResponse.builder().status(200).build())
           .http(0)
           .build();
 
@@ -189,7 +173,7 @@ public class OltpExporterBenchmark {
   @Benchmark
   public CompletableResultCode jdkHttpExporter(RequestMarshalState state) {
     CompletableResultCode result =
-        okHttpHttpExporter
+        jdkHttpExporter
             .export(state.traceRequestMarshaler, state.numSpans)
             .join(10, TimeUnit.SECONDS);
     if (!result.isSuccess()) {

@@ -37,7 +37,7 @@ public class OkHttpSender implements HttpSender {
   private final boolean compressionEnabled;
   private final Supplier<Map<String, String>> headerSupplier;
 
-  OkHttpSender(
+  public OkHttpSender(
       String endpoint,
       boolean compressionEnabled,
       Supplier<Map<String, String>> headerSupplier,

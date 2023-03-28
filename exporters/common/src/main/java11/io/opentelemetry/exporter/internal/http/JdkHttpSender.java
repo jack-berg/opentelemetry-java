@@ -97,7 +97,7 @@ public class JdkHttpSender implements HttpSender {
 
   @Override
   public CompletableFuture<Response> send(Consumer<OutputStream> marshaler, int contentLength) {
-    return new ExportRequest(marshaler).send().thenApply(JdkHttpSender::toHttpResponse);
+    return new ExportRequest(marshaler, contentLength).send().thenApply(JdkHttpSender::toHttpResponse);
   }
 
   private HttpRequest.Builder builder() {
@@ -110,36 +110,42 @@ public class JdkHttpSender implements HttpSender {
   private class ExportRequest {
 
     private final Consumer<OutputStream> marshaler;
+    private final int contentLength;
     private final AtomicInteger attempt = new AtomicInteger();
     private final AtomicLong nextBackoffNanos =
         new AtomicLong(retryPolicyCopy.initialBackoff.toNanos());
 
-    private ExportRequest(Consumer<OutputStream> marshaler) {
+    private ExportRequest(Consumer<OutputStream> marshaler, int contentLength) {
       this.marshaler = marshaler;
+      this.contentLength = contentLength;
     }
 
     private CompletableFuture<HttpResponse<byte[]>> send() {
       HttpRequest.Builder requestBuilder = builder();
       // TODO: make sure to test with small pipe size
-      PipedInputStream is = new PipedInputStream();
-
-      if (compressionEnabled) {
-        requestBuilder.header("Content-Encoding", "gzip");
+      PipedInputStream pis;
+      OutputStream os;
+      try {
+        PipedOutputStream pos = new PipedOutputStream();
+        pis = new PipedInputStream(pos);
+        if (compressionEnabled) {
+          requestBuilder.header("Content-Encoding", "gzip");
+          os = new GZIPOutputStream(pos);
+        } else {
+          os = pos;
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
       }
 
-      requestBuilder.POST(HttpRequest.BodyPublishers.ofInputStream(() -> is));
+      requestBuilder.POST(HttpRequest.BodyPublishers.ofInputStream(() -> pis));
 
       CompletableFuture<Void> marshalFuture =
           CompletableFuture.runAsync(
               () -> {
-                try (PipedOutputStream os = new PipedOutputStream(is)) {
-                  if (compressionEnabled) {
-                    try (GZIPOutputStream gzos = new GZIPOutputStream(os)) {
-                      marshaler.accept(gzos);
-                    }
-                  } else {
-                    marshaler.accept(os);
-                  }
+                marshaler.accept(os);
+                try {
+                  os.close();
                 } catch (IOException e) {
                   throw new RuntimeException(e);
                 }
@@ -153,7 +159,7 @@ public class JdkHttpSender implements HttpSender {
           .handleAsync(
               (httpResponse, throwable) -> {
                 try {
-                  is.close();
+                  pis.close();
                 } catch (IOException e) {
                   throw new RuntimeException(e);
                 }
