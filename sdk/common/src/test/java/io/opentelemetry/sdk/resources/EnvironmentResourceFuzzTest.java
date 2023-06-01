@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.autoconfigure;
+package io.opentelemetry.sdk.resources;
 
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.assertThat;
 import static java.util.Collections.singletonMap;
@@ -14,13 +14,13 @@ import edu.berkeley.cs.jqf.fuzz.junit.GuidedFuzzing;
 import edu.berkeley.cs.jqf.fuzz.random.NoGuidance;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.internal.PercentEscaper;
-import io.opentelemetry.sdk.autoconfigure.spi.internal.ConfigPropertiesBridge;
+import io.opentelemetry.sdk.internal.DefaultConfigProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.runner.Result;
 import org.junit.runner.RunWith;
 
 @SuppressWarnings("SystemOut")
-class ResourceConfigurationFuzzTest {
+class EnvironmentResourceFuzzTest {
 
   @RunWith(JQF.class)
   public static class TestCases {
@@ -30,10 +30,10 @@ class ResourceConfigurationFuzzTest {
     @Fuzz
     public void getAttributesWithRandomValues(String value1, String value2) {
       Attributes attributes =
-          ResourceConfiguration.getAttributes(
-              ConfigPropertiesBridge.createForTest(
+          EnvironmentResource.getAttributes(
+              DefaultConfigProperties.createForTest(
                   singletonMap(
-                      ResourceConfiguration.ATTRIBUTE_PROPERTY,
+                      EnvironmentResource.ATTRIBUTE_PROPERTY,
                       "key1=" + escaper.escape(value1) + ",key2=" + escaper.escape(value2))));
 
       assertThat(attributes).hasSize(2).containsEntry("key1", value1).containsEntry("key2", value2);

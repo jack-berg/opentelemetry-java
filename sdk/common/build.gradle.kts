@@ -23,6 +23,7 @@ dependencies {
 
   testImplementation(project(":sdk:testing"))
   testImplementation("com.google.guava:guava-testlib")
+  testImplementation("edu.berkeley.cs.jqf:jqf-fuzz")
 }
 
 testing {
