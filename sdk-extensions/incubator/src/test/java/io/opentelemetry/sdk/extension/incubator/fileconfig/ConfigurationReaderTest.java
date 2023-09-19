@@ -47,11 +47,19 @@ import io.opentelemetry.sdk.extension.incubator.fileconfig.internal.model.Zipkin
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import javax.annotation.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class ConfigurationReaderTest {
 
@@ -333,5 +341,370 @@ class ConfigurationReaderTest {
     assertThat(aggregation.getSum()).isNull();
 
     assertThat(objectPlaceholderModel).isEqualTo(noObjectPlaceholderModel);
+  }
+
+  @ParameterizedTest
+  @MethodSource("envVarSubstitutionArgs")
+  void envSubstituteAndLoadYaml(
+      String rawYaml, String expectedSubstituteResult, Object expectedYamlResult) {
+    Map<String, String> environmentVariables = new HashMap<>();
+    environmentVariables.put("VAR_1", "value1");
+    environmentVariables.put("VAR_2", "value2");
+
+    String substitutedYaml =
+        ConfigurationReader.substituteEnvVariables(
+            new ByteArrayInputStream(rawYaml.getBytes(StandardCharsets.UTF_8)),
+            environmentVariables);
+    assertThat(substitutedYaml).isEqualTo(expectedSubstituteResult);
+
+    Object yaml =
+        ConfigurationReader.loadYaml(
+            new ByteArrayInputStream(rawYaml.getBytes(StandardCharsets.UTF_8)),
+            environmentVariables);
+    assertThat(yaml).isEqualTo(expectedYamlResult);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static java.util.stream.Stream<Arguments> envVarSubstitutionArgs() {
+    return java.util.stream.Stream.of(
+        // Simple cases
+        Arguments.of("key1: ${env:VAR_1}", "key1: value1\n", mapOf(entry("key1", "value1"))),
+        Arguments.of(
+            "key1: ${env:VAR_1}\nkey2: value2\n",
+            "key1: value1\nkey2: value2\n",
+            mapOf(entry("key1", "value1"), entry("key2", "value2"))),
+        Arguments.of(
+            "key1: ${env:VAR_1} value1\nkey2: value2\n",
+            "key1: value1 value1\nkey2: value2\n",
+            mapOf(entry("key1", "value1 value1"), entry("key2", "value2"))),
+        // Multiple environment variables referenced
+        Arguments.of(
+            "key1: ${env:VAR_1}${env:VAR_2}\nkey2: value2\n",
+            "key1: value1value2\nkey2: value2\n",
+            mapOf(entry("key1", "value1value2"), entry("key2", "value2"))),
+        Arguments.of(
+            "key1: ${env:VAR_1} ${env:VAR_2}\nkey2: value2\n",
+            "key1: value1 value2\nkey2: value2\n",
+            mapOf(entry("key1", "value1 value2"), entry("key2", "value2"))),
+        // VAR_3 is not defined in environment
+        Arguments.of(
+            "key1: ${env:VAR_3}\nkey2: value2\n",
+            "key1: \nkey2: value2\n",
+            mapOf(entry("key1", null), entry("key2", "value2"))),
+        Arguments.of(
+            "key1: ${env:VAR_1} ${env:VAR_3}\nkey2: value2\n",
+            "key1: value1 \nkey2: value2\n",
+            mapOf(entry("key1", "value1"), entry("key2", "value2"))),
+        // Environment variable keys must match pattern: [a-zA-Z_]+[a-zA-Z0-9_]*
+        Arguments.of(
+            "key1: ${env:VAR&}\nkey2: value2\n",
+            "key1: ${env:VAR&}\nkey2: value2\n",
+            mapOf(entry("key1", "${env:VAR&}"), entry("key2", "value2"))));
+  }
+
+  private static <K, V> Map.Entry<K, V> entry(K key, @Nullable V value) {
+    return new AbstractMap.SimpleEntry<>(key, value);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> mapOf(Map.Entry<String, ?>... entries) {
+    Map<String, Object> result = new HashMap<>();
+    for (Map.Entry<String, ?> entry : entries) {
+      result.put(entry.getKey(), entry.getValue());
+    }
+    return result;
+  }
+
+  @Test
+  void read_KitchenSinkEnvVars_Undefined() throws IOException {
+    OpenTelemetryConfiguration expected = new OpenTelemetryConfiguration();
+
+    expected.withFileFormat("0.1");
+
+    // General config
+    Resource resource = new Resource().withAttributes(new Attributes());
+    expected.withResource(resource);
+
+    AttributeLimits attributeLimits = new AttributeLimits();
+    expected.withAttributeLimits(attributeLimits);
+
+    List<String> propagators = Collections.emptyList();
+    expected.withPropagators(propagators);
+
+    // TracerProvider config
+    TracerProvider tracerProvider = new TracerProvider();
+
+    SpanLimits spanLimits = new SpanLimits();
+    tracerProvider.withLimits(spanLimits);
+
+    Sampler sampler = new Sampler();
+    tracerProvider.withSampler(sampler);
+
+    SpanProcessor spanProcessor1 =
+        new SpanProcessor()
+            .withBatch(
+                new BatchSpanProcessor().withExporter(new SpanExporter().withOtlp(new Otlp())));
+    tracerProvider.withProcessors(Collections.singletonList(spanProcessor1));
+
+    expected.withTracerProvider(tracerProvider);
+    // end TracerProvider config
+
+    // LoggerProvider config
+    LoggerProvider loggerProvider = new LoggerProvider();
+
+    LogRecordLimits logRecordLimits = new LogRecordLimits();
+    loggerProvider.withLimits(logRecordLimits);
+
+    LogRecordProcessor logRecordProcessor =
+        new LogRecordProcessor()
+            .withBatch(
+                new BatchLogRecordProcessor()
+                    .withExporter(new LogRecordExporter().withOtlp(new Otlp())));
+    loggerProvider.withProcessors(Collections.singletonList(logRecordProcessor));
+
+    expected.withLoggerProvider(loggerProvider);
+    // end LoggerProvider config
+
+    // MeterProvider config
+    MeterProvider meterProvider = new MeterProvider();
+
+    MetricReader metricReader1 =
+        new MetricReader()
+            .withPeriodic(
+                new PeriodicMetricReader()
+                    .withExporter(new MetricExporter().withOtlp(new OtlpMetric())));
+    meterProvider.withReaders(Collections.singletonList(metricReader1));
+
+    meterProvider.withViews(Collections.emptyList());
+
+    expected.withMeterProvider(meterProvider);
+    // end MeterProvider config
+
+    try (InputStream configExampleFile =
+        ConfigurationReaderTest.class.getResourceAsStream("/kitchen-sink-env-vars.yaml")) {
+      OpenTelemetryConfiguration config =
+          ConfigurationReader.parse(configExampleFile, Collections.emptyMap());
+
+      // General config
+      assertThat(config.getFileFormat()).isEqualTo("0.1");
+      assertThat(config.getResource()).isEqualTo(resource);
+      assertThat(config.getAttributeLimits()).isEqualTo(attributeLimits);
+      assertThat(config.getPropagators()).isEqualTo(propagators);
+
+      // TracerProvider config
+      TracerProvider configTracerProvider = config.getTracerProvider();
+      assertThat(configTracerProvider.getLimits()).isEqualTo(spanLimits);
+      assertThat(configTracerProvider.getSampler()).isEqualTo(sampler);
+      assertThat(configTracerProvider.getProcessors())
+          .isEqualTo(Collections.singletonList(spanProcessor1));
+
+      // LoggerProvider config
+      LoggerProvider configLoggerProvider = config.getLoggerProvider();
+      assertThat(configLoggerProvider.getLimits()).isEqualTo(logRecordLimits);
+      assertThat(configLoggerProvider.getProcessors())
+          .isEqualTo(Collections.singletonList(logRecordProcessor));
+
+      // MeterProvider config
+      MeterProvider configMeterProvider = config.getMeterProvider();
+      assertThat(configMeterProvider.getReaders())
+          .isEqualTo(Collections.singletonList(metricReader1));
+      assertThat(configMeterProvider.getViews()).isEqualTo(Collections.emptyList());
+
+      // All configuration
+      assertThat(config).isEqualTo(expected);
+    }
+  }
+
+  @Test
+  void read_KitchenSinkEnvVars_Defaults() throws IOException {
+    OpenTelemetryConfiguration expected = new OpenTelemetryConfiguration();
+
+    expected.withFileFormat("0.1");
+    expected.withDisabled(false);
+
+    // General config
+    Resource resource =
+        new Resource().withAttributes(new Attributes().withServiceName("unknown_service:java"));
+    expected.withResource(resource);
+
+    AttributeLimits attributeLimits =
+        new AttributeLimits()
+            .withAttributeValueLengthLimit(Integer.MAX_VALUE)
+            .withAttributeCountLimit(128);
+    expected.withAttributeLimits(attributeLimits);
+
+    List<String> propagators = Arrays.asList("tracecontext", "baggage");
+    expected.withPropagators(propagators);
+
+    // TracerProvider config
+    TracerProvider tracerProvider = new TracerProvider();
+
+    SpanLimits spanLimits =
+        new SpanLimits()
+            .withAttributeValueLengthLimit(Integer.MAX_VALUE)
+            .withAttributeCountLimit(128)
+            .withEventCountLimit(128)
+            .withLinkCountLimit(128)
+            .withEventAttributeCountLimit(128)
+            .withLinkAttributeCountLimit(128);
+    tracerProvider.withLimits(spanLimits);
+
+    Sampler sampler = new Sampler();
+    tracerProvider.withSampler(sampler);
+
+    SpanProcessor spanProcessor1 =
+        new SpanProcessor()
+            .withBatch(
+                new BatchSpanProcessor()
+                    .withScheduleDelay(5_000)
+                    .withExportTimeout(30_000)
+                    .withMaxQueueSize(2048)
+                    .withMaxExportBatchSize(512)
+                    .withExporter(
+                        new SpanExporter()
+                            .withOtlp(
+                                new Otlp()
+                                    .withProtocol("grpc")
+                                    .withEndpoint("http://localhost:4317")
+                                    .withCertificate("/app/cert.pem")
+                                    .withClientKey("/app/cert.pem")
+                                    .withClientCertificate("/app/cert.pem")
+                                    .withCompression("gzip")
+                                    .withTimeout(10_000))));
+    tracerProvider.withProcessors(Collections.singletonList(spanProcessor1));
+
+    expected.withTracerProvider(tracerProvider);
+    // end TracerProvider config
+
+    // LoggerProvider config
+    LoggerProvider loggerProvider = new LoggerProvider();
+
+    LogRecordLimits logRecordLimits =
+        new LogRecordLimits()
+            .withAttributeValueLengthLimit(Integer.MAX_VALUE)
+            .withAttributeCountLimit(128);
+    loggerProvider.withLimits(logRecordLimits);
+
+    LogRecordProcessor logRecordProcessor =
+        new LogRecordProcessor()
+            .withBatch(
+                new BatchLogRecordProcessor()
+                    .withScheduleDelay(1_000)
+                    .withExportTimeout(30_000)
+                    .withMaxQueueSize(2048)
+                    .withMaxExportBatchSize(512)
+                    .withExporter(
+                        new LogRecordExporter()
+                            .withOtlp(
+                                new Otlp()
+                                    .withProtocol("grpc")
+                                    .withEndpoint("http://localhost:4317")
+                                    .withCertificate("/app/cert.pem")
+                                    .withClientKey("/app/cert.pem")
+                                    .withClientCertificate("/app/cert.pem")
+                                    .withCompression("gzip")
+                                    .withTimeout(10_000))));
+    loggerProvider.withProcessors(Collections.singletonList(logRecordProcessor));
+
+    expected.withLoggerProvider(loggerProvider);
+    // end LoggerProvider config
+
+    // MeterProvider config
+    MeterProvider meterProvider = new MeterProvider();
+
+    MetricReader metricReader1 =
+        new MetricReader()
+            .withPeriodic(
+                new PeriodicMetricReader()
+                    .withInterval(60_000)
+                    .withTimeout(30_000)
+                    .withExporter(
+                        new MetricExporter()
+                            .withOtlp(
+                                new OtlpMetric()
+                                    .withProtocol("grpc")
+                                    .withEndpoint("http://localhost:4317")
+                                    .withCertificate("/app/cert.pem")
+                                    .withClientKey("/app/cert.pem")
+                                    .withClientCertificate("/app/cert.pem")
+                                    .withCompression("gzip")
+                                    .withTimeout(10_000)
+                                    .withTemporalityPreference("cumulative")
+                                    .withDefaultHistogramAggregation(
+                                        DefaultHistogramAggregation.EXPLICIT_BUCKET_HISTOGRAM))));
+    meterProvider.withReaders(Collections.singletonList(metricReader1));
+
+    meterProvider.withViews(Collections.emptyList());
+
+    expected.withMeterProvider(meterProvider);
+    // end MeterProvider config
+
+    Map<String, String> envVars = new HashMap<>();
+    envVars.put("OTEL_SDK_DISABLED", "false");
+    envVars.put("OTEL_SERVICE_NAME", "unknown_service:java");
+    envVars.put("OTEL_PROPAGATORS", "tracecontext,baggage");
+    envVars.put("OTEL_BSP_SCHEDULE_DELAY", "5000");
+    envVars.put("OTEL_BSP_EXPORT_TIMEOUT", "30000");
+    envVars.put("OTEL_BSP_MAX_QUEUE_SIZE", "2048");
+    envVars.put("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "512");
+    envVars.put("OTEL_BLRP_SCHEDULE_DELAY", "1000");
+    envVars.put("OTEL_BLRP_EXPORT_TIMEOUT", "30000");
+    envVars.put("OTEL_BLRP_MAX_QUEUE_SIZE", "2048");
+    envVars.put("OTEL_BLRP_MAX_EXPORT_BATCH_SIZE", "512");
+    envVars.put("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", "2147483647");
+    envVars.put("OTEL_ATTRIBUTE_COUNT_LIMIT", "128");
+    envVars.put("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT", "2147483647");
+    envVars.put("OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT", "128");
+    envVars.put("OTEL_SPAN_EVENT_COUNT_LIMIT", "128");
+    envVars.put("OTEL_SPAN_LINK_COUNT_LIMIT", "128");
+    envVars.put("OTEL_EVENT_ATTRIBUTE_COUNT_LIMIT", "128");
+    envVars.put("OTEL_LINK_ATTRIBUTE_COUNT_LIMIT", "128");
+    envVars.put("OTEL_LOGRECORD_ATTRIBUTE_VALUE_LENGTH_LIMIT", "2147483647");
+    envVars.put("OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT", "128");
+    envVars.put("OTEL_METRIC_EXPORT_INTERVAL", "60000");
+    envVars.put("OTEL_METRIC_EXPORT_TIMEOUT", "30000");
+    envVars.put("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+    envVars.put("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317");
+    envVars.put("OTEL_EXPORTER_OTLP_CERTIFICATE", "/app/cert.pem");
+    envVars.put("OTEL_EXPORTER_OTLP_CLIENT_KEY", "/app/cert.pem");
+    envVars.put("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", "/app/cert.pem");
+    envVars.put("OTEL_EXPORTER_OTLP_COMPRESSION", "gzip");
+    envVars.put("OTEL_EXPORTER_OTLP_TIMEOUT", "10000");
+    envVars.put("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", "cumulative");
+    envVars.put(
+        "OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION", "explicit_bucket_histogram");
+
+    try (InputStream configExampleFile =
+        ConfigurationReaderTest.class.getResourceAsStream("/kitchen-sink-env-vars.yaml")) {
+      OpenTelemetryConfiguration config = ConfigurationReader.parse(configExampleFile, envVars);
+
+      // General config
+      assertThat(config.getFileFormat()).isEqualTo("0.1");
+      assertThat(config.getResource()).isEqualTo(resource);
+      assertThat(config.getAttributeLimits()).isEqualTo(attributeLimits);
+      assertThat(config.getPropagators()).isEqualTo(propagators);
+
+      // TracerProvider config
+      TracerProvider configTracerProvider = config.getTracerProvider();
+      assertThat(configTracerProvider.getLimits()).isEqualTo(spanLimits);
+      assertThat(configTracerProvider.getSampler()).isEqualTo(sampler);
+      assertThat(configTracerProvider.getProcessors())
+          .isEqualTo(Collections.singletonList(spanProcessor1));
+
+      // LoggerProvider config
+      LoggerProvider configLoggerProvider = config.getLoggerProvider();
+      assertThat(configLoggerProvider.getLimits()).isEqualTo(logRecordLimits);
+      assertThat(configLoggerProvider.getProcessors())
+          .isEqualTo(Collections.singletonList(logRecordProcessor));
+
+      // MeterProvider config
+      MeterProvider configMeterProvider = config.getMeterProvider();
+      assertThat(configMeterProvider.getReaders())
+          .isEqualTo(Collections.singletonList(metricReader1));
+      assertThat(configMeterProvider.getViews()).isEqualTo(Collections.emptyList());
+
+      // All configuration
+      assertThat(config).isEqualTo(expected);
+    }
   }
 }
