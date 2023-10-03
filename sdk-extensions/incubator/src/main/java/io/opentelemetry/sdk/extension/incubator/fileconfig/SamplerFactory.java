@@ -10,7 +10,6 @@ import static java.util.stream.Collectors.joining;
 import io.opentelemetry.sdk.autoconfigure.internal.NamedSpiManager;
 import io.opentelemetry.sdk.autoconfigure.internal.SpiHelper;
 import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
-import io.opentelemetry.sdk.autoconfigure.spi.ConfigurationException;
 import io.opentelemetry.sdk.autoconfigure.spi.internal.DefaultConfigProperties;
 import io.opentelemetry.sdk.autoconfigure.spi.traces.ConfigurableSamplerProvider;
 import io.opentelemetry.sdk.extension.incubator.fileconfig.internal.model.JaegerRemote;
@@ -116,14 +115,36 @@ final class SamplerFactory
               "jaeger remote sampler"));
     }
 
-    // TODO(jack-berg): add support for generic SPI samplers
-    if (!model.getAdditionalProperties().isEmpty()) {
-      throw new ConfigurationException(
-          "Unrecognized sampler(s): "
-              + model.getAdditionalProperties().keySet().stream().collect(joining(",", "[", "]")));
+    Map<String, Object> additionalProperties = model.getAdditionalProperties();
+    if (!additionalProperties.isEmpty()) {
+      for (Map.Entry<String, Object> entry : additionalProperties.entrySet()) {
+        String samplerName = entry.getKey();
+        ConfigProperties configProperties =
+            new ExtendedConfigProperties(toConfigMap(entry.getValue()));
+        return FileConfigUtil.addAndReturn(
+            closeables,
+            FileConfigUtil.assertNotNull(
+                samplerSpiManager(configProperties, spiHelper).getByName(samplerName),
+                samplerName));
+      }
     }
 
     return Sampler.parentBased(Sampler.alwaysOn());
+  }
+
+  private static Map<String, Object> toConfigMap(Object object) {
+    if (!(object instanceof Map)) {
+      return Collections.emptyMap();
+    }
+    Map<String, Object> map = new HashMap<>();
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) object).entrySet()) {
+      Object key = entry.getKey();
+      if (!(key instanceof String)) {
+        continue;
+      }
+      map.put((String) key, entry.getValue());
+    }
+    return Collections.unmodifiableMap(map);
   }
 
   private static NamedSpiManager<Sampler> samplerSpiManager(
