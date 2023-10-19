@@ -22,7 +22,7 @@ class OnStartSpanProcessorTest {
     ReadWriteSpan inputSpan = mock(ReadWriteSpan.class);
 
     SpanProcessor processor =
-        OnStartSpanProcessor.create(
+        OnStartSpanProcessor.of(
             (ctx, span) -> {
               seenContext.set(ctx);
               seenSpan.set(span);

@@ -18,7 +18,7 @@ class OnEndSpanProcessorTest {
     AtomicReference<ReadableSpan> seenSpan = new AtomicReference<>();
     ReadWriteSpan inputSpan = mock(ReadWriteSpan.class);
 
-    SpanProcessor processor = OnEndSpanProcessor.create(seenSpan::set);
+    OnEndSpanProcessor processor = seenSpan::set;
 
     assertThat(processor.isStartRequired()).isFalse();
     assertThat(processor.isEndRequired()).isTrue();

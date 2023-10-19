@@ -15,7 +15,7 @@ public class TestTracerProviderConfigurer
   @Override
   public void configure(SdkTracerProviderBuilder tracerProvider, ConfigProperties config) {
     tracerProvider.addSpanProcessor(
-        OnStartSpanProcessor.create(
+        OnStartSpanProcessor.of(
             (ctx, span) ->
                 span.setAttribute("configured", config.getBoolean("otel.test.configured"))));
   }
