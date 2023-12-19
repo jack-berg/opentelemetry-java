@@ -12,6 +12,7 @@ import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.internal.ThrottlingLogger;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -77,7 +78,7 @@ public final class HttpExporter<T extends Marshaler> {
           try {
             body = httpResponse.responseBody();
           } catch (IOException ex) {
-            throw new IllegalStateException(ex);
+            throw new UncheckedIOException(ex);
           }
 
           String status = extractErrorStatus(httpResponse.statusMessage(), body);

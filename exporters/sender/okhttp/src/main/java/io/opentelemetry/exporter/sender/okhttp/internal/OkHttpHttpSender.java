@@ -13,6 +13,7 @@ import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -145,6 +146,8 @@ public final class OkHttpHttpSender implements HttpSender {
                                   return body.bytes();
                                 }
                               });
+                        } catch (UncheckedIOException e) {
+                          onError.accept(e);
                         }
                       }
                     }));

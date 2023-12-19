@@ -127,8 +127,8 @@ public final class JdkHttpSender implements HttpSender {
                 () -> {
                   try {
                     return sendInternal(marshaler);
-                  } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+                  } catch (IOException | UncheckedIOException e) {
+                    onError.accept(e);
                   }
                 },
                 executorService)
