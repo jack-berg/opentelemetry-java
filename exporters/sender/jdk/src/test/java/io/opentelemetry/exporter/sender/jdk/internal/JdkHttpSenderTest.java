@@ -8,6 +8,7 @@ package io.opentelemetry.exporter.sender.jdk.internal;
 import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
@@ -86,8 +87,7 @@ class JdkHttpSenderTest {
     server.enqueue(HttpResponse.of(HttpStatus.OK));
 
     CompletableResultCode result = exporter.export(new NoOpMarshaler(), 0);
-    result.join(1, TimeUnit.MINUTES);
-    Assertions.assertThat(result.isSuccess()).isTrue();
+    await().untilAsserted(() -> Assertions.assertThat(result.isSuccess()).isTrue());
   }
 
   @Test
