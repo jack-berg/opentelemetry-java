@@ -266,6 +266,7 @@ public final class BatchSpanProcessor implements SpanProcessor {
     }
 
     private void flush() {
+      System.out.println("processor#flush");
       int spansToFlush = queue.size();
       while (spansToFlush > 0) {
         ReadableSpan span = queue.poll();
