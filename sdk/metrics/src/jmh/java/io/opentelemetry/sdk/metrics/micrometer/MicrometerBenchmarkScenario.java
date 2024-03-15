@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.Aggregation;
 
@@ -29,7 +30,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex]);
+          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -48,7 +49,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex]);
+          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -68,7 +69,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex]);
+          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -88,7 +89,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex]);
+          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /** Otel recording to counter, and {@link MemoryMode#REUSABLE_DATA}. */
@@ -105,7 +106,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleCounter.add(value, threadState.attributesList[attributesIndex]);
+          doubleCounter.add(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /** Otel recording to counter, and {@link MemoryMode#REUSABLE_DATA}. */
@@ -122,7 +123,7 @@ public enum MicrometerBenchmarkScenario {
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleCounter.add(value, threadState.attributesList[attributesIndex]);
+          doubleCounter.add(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
