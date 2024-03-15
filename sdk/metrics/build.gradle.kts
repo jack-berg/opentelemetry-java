@@ -30,7 +30,6 @@ dependencies {
   jmh(project(":sdk:testing"))
   jmh("io.micrometer:micrometer-registry-prometheus:latest.release")
   testImplementation("io.micrometer:micrometer-registry-prometheus:latest.release")
-
 }
 
 dependencyCheck {

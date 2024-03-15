@@ -1,51 +1,113 @@
+/*
+ * Copyright The OpenTelemetry Authors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package io.opentelemetry.sdk.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
-import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.junit.jupiter.api.Test;
-import java.time.Duration;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Random;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class MicrometerTest {
+  private static final int cardinality = 100;
+  private static final int measurementsPerSeries = 1_000_000;
+
+  private final Random random = new Random();
+  private MeterRegistry registry;
+  private List<List<Tag>> tagsList;
+  private Counter[] counters;
+  private DistributionSummary[] distributionSummaries;
+
+  @BeforeEach
+  void setup() {
+    registry = new SimpleMeterRegistry();
+    registry
+        .config()
+        .meterFilter(
+            new MeterFilter() {
+              @Override
+              public DistributionStatisticConfig configure(
+                  Meter.Id id, DistributionStatisticConfig config) {
+                return DistributionStatisticConfig.builder()
+                    .serviceLevelObjectives(
+                        Double.MIN_VALUE,
+                        5d,
+                        10d,
+                        25d,
+                        50d,
+                        75d,
+                        100d,
+                        250d,
+                        500d,
+                        750d,
+                        1_000d,
+                        2_500d,
+                        5_000d,
+                        7_500d,
+                        10_000d)
+                    .build();
+              }
+            });
+
+    tagsList = new ArrayList<>(cardinality);
+    counters = new Counter[cardinality];
+    distributionSummaries = new DistributionSummary[cardinality];
+    String last = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
+    for (int i = 0; i < cardinality; i++) {
+      char[] chars = last.toCharArray();
+      chars[random.nextInt(last.length())] = (char) (random.nextInt(26) + 'a');
+      last = new String(chars);
+      tagsList.add(Collections.singletonList(Tag.of("key", last)));
+      counters[i] = registry.counter("counter", tagsList.get(i));
+      distributionSummaries[i] = registry.summary("histogram", tagsList.get(i));
+    }
+  }
 
   @Test
-  void micrometerRecordCollect() {
-    MeterRegistry registry = new SimpleMeterRegistry();
-    registry.config()
-        .meterFilter(new MeterFilter() {
-          @Override
-          public DistributionStatisticConfig configure(Meter.Id id,
-              DistributionStatisticConfig config) {
-            return DistributionStatisticConfig.builder()
-                .serviceLevelObjectives(0.1, 0.5, 1.5, 2.0)
-                .build();
-          }
-        });
+  void attributesKnown() {
+    for (int j = 0; j < measurementsPerSeries; j++) {
+      for (int i = 0; i < tagsList.size(); i++) {
+        int value = random.nextInt(10_000);
+        distributionSummaries[i].record(value);
+        counters[i].increment(value);
+      }
+    }
 
+    registry
+        .getMeters()
+        .forEach(
+            meter -> {
+              System.out.format("%s: %s\n", meter.getId(), meter.measure());
+            });
+  }
 
-    List<Tag> tags1 = Arrays.asList(Tag.of("key1", "valuea"), Tag.of("key2", "valuec"));
-    List<Tag> tags2 = Arrays.asList(Tag.of("key1", "valueb"), Tag.of("key2", "valued"));
-    registry.counter("counter", tags1).increment();
-    registry.counter("counter", tags2).increment();
+  @Test
+  void attributesUnknown() {
+    for (int j = 0; j < measurementsPerSeries; j++) {
+      for (int i = 0; i < tagsList.size(); i++) {
+        int value = random.nextInt(10_000);
+        registry.summary("histogram", tagsList.get(i)).record(value);
+        registry.counter("counter", tagsList.get(i)).increment(value);
+      }
+    }
 
-    registry.timer("timer", tags1).record(Duration.ofSeconds(1));
-    registry.timer("timer", tags1).record(Duration.ofSeconds(2));
-    registry.timer("timer", tags2).record(Duration.ofSeconds(1));
-
-
-    registry.summary("summary", tags1).record(1.0);
-    registry.summary("summary", tags2).record(1.0);
-
-    registry.getMeters().forEach(meter -> {
-      System.out.format("%s: %s\n", meter.getId(), meter.measure());
-    });
-
+    registry
+        .getMeters()
+        .forEach(
+            meter -> {
+              System.out.format("%s: %s\n", meter.getId(), meter.measure());
+            });
   }
 }
