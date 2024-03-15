@@ -10,8 +10,8 @@ dependencies {
 
   // This enables running JMH benchmark classes within IntelliJ using
   // JMH plugins
-  jmh("org.openjdk.jmh:jmh-generator-annprocess")
-  jmhAnnotationProcessor("org.openjdk.jmh:jmh-generator-annprocess")
+  //jmh("org.openjdk.jmh:jmh-generator-annprocess")
+  //jmhAnnotationProcessor("org.openjdk.jmh:jmh-generator-annprocess")
 }
 
 // invoke jmh on a single benchmark class like so:
