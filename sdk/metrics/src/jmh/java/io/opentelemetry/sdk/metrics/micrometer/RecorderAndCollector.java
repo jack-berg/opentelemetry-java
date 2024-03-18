@@ -11,6 +11,4 @@ interface RecorderAndCollector {
   void record(MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex);
 
   void collect();
-
-  void shutdown();
 }

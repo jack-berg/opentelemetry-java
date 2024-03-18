@@ -24,13 +24,15 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
         }
 
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
+          doubleHistogram.record(
+              value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -43,13 +45,15 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
         }
 
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
+          doubleHistogram.record(
+              value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -63,13 +67,15 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
         }
 
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
+          doubleHistogram.record(
+              value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /**
@@ -83,13 +89,15 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
         }
 
         @Override
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
-          doubleHistogram.record(value, threadState.attributesList[attributesIndex], Context.root());
+          doubleHistogram.record(
+              value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
   /** Otel recording to counter, and {@link MemoryMode#REUSABLE_DATA}. */
@@ -99,6 +107,7 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleCounter =
               sdkMeterProvider.get("meter").counterBuilder("counter").ofDoubles().build();
         }
@@ -116,6 +125,7 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           doubleCounter =
               sdkMeterProvider.get("meter").counterBuilder("counter").ofDoubles().build();
         }
@@ -130,7 +140,7 @@ public enum MicrometerBenchmarkScenario {
    * Micrometer recording to summary distribution (i.e. otel histogram) with bucket boundaries
    * reflecting otel default explicit bucket boundaries, assuming tags ARE NOT known ahead of time
    * (i.e. typical http.server.request.duration). See {@link
-   * AbstractMicrometerRecorderAndCollector#micrometerRegistry()} for configuration details.
+   * {@link AbstractMicrometerRecorderAndCollector#setup(MicrometerBenchmark.ThreadState)} for configuration details.
    */
   MICROMETER_DEFAULT_HISTOGRAM_UNKNOWN_TAGS(
       new AbstractMicrometerRecorderAndCollector() {
@@ -143,7 +153,8 @@ public enum MicrometerBenchmarkScenario {
   /**
    * Micrometer recording to summary distribution (i.e. otel histogram) with bucket boundaries
    * reflecting otel default explicit bucket boundaries, assuming tags ARE known ahead of time. See
-   * {@link AbstractMicrometerRecorderAndCollector#micrometerRegistry()} for configuration details.
+   * {@link AbstractMicrometerRecorderAndCollector#setup(MicrometerBenchmark.ThreadState)} for
+   * configuration details.
    */
   MICROMETER_DEFAULT_HISTOGRAM_KNOWN_TAGS(
       new AbstractMicrometerRecorderAndCollector() {
@@ -151,6 +162,7 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           summaries = new DistributionSummary[threadState.tagsList.length];
           for (int i = 0; i < threadState.tagsList.length; i++) {
             summaries[i] = registry.summary("histogram", threadState.tagsList[i]);
@@ -179,6 +191,7 @@ public enum MicrometerBenchmarkScenario {
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
           counters = new Counter[threadState.tagsList.length];
           for (int i = 0; i < threadState.tagsList.length; i++) {
             counters[i] = registry.counter("counter", threadState.tagsList[i]);

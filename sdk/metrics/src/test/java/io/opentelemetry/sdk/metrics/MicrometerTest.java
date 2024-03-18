@@ -15,6 +15,7 @@ import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.internal.SdkMeterProviderUtil;
 import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarFilter;
@@ -136,10 +137,15 @@ class MicrometerTest {
     runInMultipleThreads(
         4,
         () -> {
-          for (int j = 0; j < measurementsPerSeries; j++) {
+          while (true) {
             for (int i = 0; i < tagsList.length; i++) {
               int value = random.nextInt(10_000);
-              histogram.record(value, attributesList[i]);
+              histogram.record(value, attributesList[i], Context.root());
+            }
+            try {
+              Thread.sleep(10);
+            } catch (InterruptedException e) {
+              throw new RuntimeException(e);
             }
           }
         });
@@ -150,6 +156,7 @@ class MicrometerTest {
     for (int i = 0; i < threadCount; i++) {
       Thread thread = new Thread(runnable);
       thread.setDaemon(true);
+      thread.setName("test-" + i);
       thread.start();
       threads.add(thread);
     }

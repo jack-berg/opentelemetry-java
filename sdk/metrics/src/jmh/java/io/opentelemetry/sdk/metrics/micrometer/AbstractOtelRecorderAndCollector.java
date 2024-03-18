@@ -15,17 +15,14 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.concurrent.TimeUnit;
 
 abstract class AbstractOtelRecorderAndCollector implements RecorderAndCollector {
-  protected final SdkMeterProvider sdkMeterProvider;
+  private final MemoryMode memoryMode;
+  private final Aggregation aggregation;
+
+  protected SdkMeterProvider sdkMeterProvider;
 
   protected AbstractOtelRecorderAndCollector(MemoryMode memoryMode, Aggregation aggregation) {
-    InMemoryMetricReader reader =
-        InMemoryMetricReader.builder()
-            .setMemoryMode(memoryMode)
-            .setDefaultAggregationSelector(unused -> aggregation)
-            .build();
-    SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
-    SdkMeterProviderUtil.setExemplarFilter(builder, ExemplarFilter.alwaysOff());
-    sdkMeterProvider = builder.registerMetricReader(reader).build();
+    this.memoryMode = memoryMode;
+    this.aggregation = aggregation;
   }
 
   protected AbstractOtelRecorderAndCollector(MemoryMode memoryMode) {
@@ -33,12 +30,20 @@ abstract class AbstractOtelRecorderAndCollector implements RecorderAndCollector 
   }
 
   @Override
-  public void collect() {
-    sdkMeterProvider.forceFlush().join(10, TimeUnit.SECONDS);
+  public void setup(MicrometerBenchmark.ThreadState threadState) {
+    InMemoryMetricReader reader =
+        InMemoryMetricReader.builder()
+            .setMemoryMode(memoryMode)
+            .setDefaultAggregationSelector(unused -> aggregation)
+            .build();
+    SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+    builder.registerMetricReader(reader);
+    SdkMeterProviderUtil.setExemplarFilter(builder, ExemplarFilter.alwaysOff());
+    sdkMeterProvider = builder.build();
   }
 
   @Override
-  public void shutdown() {
-    sdkMeterProvider.close();
+  public void collect() {
+    sdkMeterProvider.forceFlush().join(10, TimeUnit.SECONDS);
   }
 }

@@ -12,21 +12,12 @@ import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 abstract class AbstractMicrometerRecorderAndCollector implements RecorderAndCollector {
-  protected final MeterRegistry registry = micrometerRegistry();
+  protected MeterRegistry registry;
 
   @Override
-  public void collect() {
-    registry.getMeters();
-  }
-
-  @Override
-  public void shutdown() {
-    registry.close();
-  }
-
-  static MeterRegistry micrometerRegistry() {
-    MeterRegistry meterRegistry = new SimpleMeterRegistry();
-    meterRegistry
+  public void setup(MicrometerBenchmark.ThreadState threadState) {
+    registry = new SimpleMeterRegistry();
+    registry
         .config()
         .meterFilter(
             new MeterFilter() {
@@ -53,6 +44,10 @@ abstract class AbstractMicrometerRecorderAndCollector implements RecorderAndColl
                     .build();
               }
             });
-    return meterRegistry;
+  }
+
+  @Override
+  public void collect() {
+    registry.getMeters();
   }
 }
