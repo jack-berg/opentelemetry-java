@@ -28,8 +28,13 @@ dependencies {
 
   jmh(project(":sdk:trace"))
   jmh(project(":sdk:testing"))
+
   jmh("io.micrometer:micrometer-registry-prometheus:latest.release")
   testImplementation("io.micrometer:micrometer-registry-prometheus:latest.release")
+
+  jmh("io.dropwizard.metrics:metrics-core:4.2.25")
+  testImplementation("io.dropwizard.metrics:metrics-core:4.2.25")
+
 }
 
 dependencyCheck {
