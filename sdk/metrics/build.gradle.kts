@@ -35,6 +35,9 @@ dependencies {
   jmh("io.dropwizard.metrics:metrics-core:4.2.25")
   testImplementation("io.dropwizard.metrics:metrics-core:4.2.25")
 
+  testImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.16.0")
+  jmh("io.prometheus:prometheus-metrics-core:1.0.0")
+  testImplementation("io.prometheus:prometheus-metrics-core:1.0.0")
 }
 
 dependencyCheck {

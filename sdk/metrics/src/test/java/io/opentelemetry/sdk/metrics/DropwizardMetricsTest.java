@@ -7,23 +7,13 @@ package io.opentelemetry.sdk.metrics;
 
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Reporter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
-import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
-import io.micrometer.core.instrument.config.MeterFilter;
-import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.sdk.common.export.MemoryMode;
-import io.opentelemetry.sdk.metrics.internal.SdkMeterProviderUtil;
-import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarFilter;
-import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -48,7 +38,8 @@ class DropwizardMetricsTest {
   void setup() {
     metricRegistry = new MetricRegistry();
 
-    ConsoleReporter build = ConsoleReporter.forRegistry(metricRegistry).outputTo(System.out).build();
+    ConsoleReporter build =
+        ConsoleReporter.forRegistry(metricRegistry).outputTo(System.out).build();
     build.report();
 
     tagsList = new List[cardinality];

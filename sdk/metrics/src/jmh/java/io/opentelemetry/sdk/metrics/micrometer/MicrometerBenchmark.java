@@ -6,6 +6,7 @@
 package io.opentelemetry.sdk.metrics.micrometer;
 
 import io.micrometer.core.instrument.Tag;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import java.util.Collections;
 import java.util.List;
@@ -34,6 +35,7 @@ public class MicrometerBenchmark {
 
   private static final int cardinality = 100;
   private static final int measurementsPerSeries = 1_000;
+  static final AttributeKey<String> ATTRIBUTE_KEY = AttributeKey.stringKey("key");
 
   @State(Scope.Benchmark)
   public static class ThreadState {
@@ -45,6 +47,7 @@ public class MicrometerBenchmark {
 
     Attributes[] attributesList;
     List<Tag>[] tagsList;
+    String[] labelValues;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -53,28 +56,30 @@ public class MicrometerBenchmark {
       random = new Random();
       attributesList = new Attributes[cardinality];
       tagsList = new List[cardinality];
+      labelValues = new String[cardinality];
       String last = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
       for (int i = 0; i < cardinality; i++) {
         char[] chars = last.toCharArray();
         chars[random.nextInt(last.length())] = (char) (random.nextInt(26) + 'a');
         last = new String(chars);
-        attributesList[i] = Attributes.builder().put("key", last).build();
+        attributesList[i] = Attributes.builder().put(ATTRIBUTE_KEY, last).build();
         tagsList[i] = Collections.singletonList(Tag.of("key", last));
+        labelValues[i] = last;
       }
 
       recorderAndCollector.setup(this);
     }
   }
 
-    /**
-     * Attempts to primarily profile the memory cost of collecting data. The most useful benchmark
-     * metrics is {@code gc.alloc.rate.norm}.
-     */
-    @Benchmark
-    public void recordAndCollect(ThreadState threadState) {
-      record(threadState);
-      threadState.recorderAndCollector.collect();
-    }
+  /**
+   * Attempts to primarily profile the memory cost of collecting data. The most useful benchmark
+   * metrics is {@code gc.alloc.rate.norm}.
+   */
+  @Benchmark
+  public void recordAndCollect(ThreadState threadState) {
+    record(threadState);
+    threadState.recorderAndCollector.collect();
+  }
 
   /**
    * Profiles the time to record measurements in a single threaded environment. The most useful
@@ -86,15 +91,15 @@ public class MicrometerBenchmark {
     record(threadState);
   }
 
-    /**
-     * Profiles the time to record measurements in a multi threaded environment. The most useful
-     * benchmark metrics are the time score (i.e. ns/op), and {@code gc.alloc.rate.norm}.
-     */
-    @Benchmark
-    @Threads(4)
-    public void recordFourThreads(ThreadState threadState) {
-      record(threadState);
-    }
+  /**
+   * Profiles the time to record measurements in a multi threaded environment. The most useful
+   * benchmark metrics are the time score (i.e. ns/op), and {@code gc.alloc.rate.norm}.
+   */
+  @Benchmark
+  @Threads(4)
+  public void recordFourThreads(ThreadState threadState) {
+    record(threadState);
+  }
 
   private void record(ThreadState threadState) {
     for (int j = 0; j < measurementsPerSeries; j++) {

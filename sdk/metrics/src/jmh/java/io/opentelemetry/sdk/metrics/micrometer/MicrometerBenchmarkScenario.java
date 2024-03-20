@@ -5,20 +5,24 @@
 
 package io.opentelemetry.sdk.metrics.micrometer;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.Aggregation;
+import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.Histogram;
 
 public enum MicrometerBenchmarkScenario {
   /**
-   * Otel recording to histogram with default explicit bucket boundaries, and {@link
-   * MemoryMode#REUSABLE_DATA}.
+   * Otel recording to histogram with explicit bucket boundaries, {@link
+   * MemoryMode#REUSABLE_DATA}, and known attributes.
    */
-  OTEL_SDK_DEFAULT_HISTOGRAM_REUSABLE_DATA(
+  OTEL_EXPLICIT_HISTOGRAM_REUSABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(MemoryMode.REUSABLE_DATA) {
         private DoubleHistogram doubleHistogram;
 
@@ -36,10 +40,10 @@ public enum MicrometerBenchmarkScenario {
         }
       }),
   /**
-   * Otel recording to histogram with default explicit bucket boundaries, and {@link
-   * MemoryMode#IMMUTABLE_DATA}.
+   * Otel recording to histogram with explicit bucket boundaries, {@link
+   * MemoryMode#IMMUTABLE_DATA}, and known attributes.
    */
-  OTEL_SDK_DEFAULT_HISTOGRAM_IMMUTABLE_DATA(
+  OTEL_EXPLICIT_HISTOGRAM_IMMUTABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(MemoryMode.IMMUTABLE_DATA) {
         private DoubleHistogram doubleHistogram;
 
@@ -57,10 +61,10 @@ public enum MicrometerBenchmarkScenario {
         }
       }),
   /**
-   * Otel recording to histogram with base2 exponential aggregation, and {@link
-   * MemoryMode#REUSABLE_DATA}.
+   * Otel recording to histogram with base2 exponential aggregation, {@link
+   * MemoryMode#REUSABLE_DATA}, and known attributes.
    */
-  OTEL_SDK_EXPONENTIAL_HISTOGRAM_REUSABLE_DATA(
+  OTEL_EXPONENTIAL_HISTOGRAM_REUSABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(
           MemoryMode.REUSABLE_DATA, Aggregation.base2ExponentialBucketHistogram()) {
         private DoubleHistogram doubleHistogram;
@@ -79,10 +83,10 @@ public enum MicrometerBenchmarkScenario {
         }
       }),
   /**
-   * Otel recording to histogram with base2 exponential aggregation, and {@link
-   * MemoryMode#IMMUTABLE_DATA}.
+   * Otel recording to histogram with base2 exponential aggregation, {@link
+   * MemoryMode#IMMUTABLE_DATA}, and known attributes.
    */
-  OTEL_SDK_EXPONENTIAL_HISTOGRAM_IMMUTABLE_DATA(
+  OTEL_EXPONENTIAL_HISTOGRAM_IMMUTABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(
           MemoryMode.IMMUTABLE_DATA, Aggregation.base2ExponentialBucketHistogram()) {
         private DoubleHistogram doubleHistogram;
@@ -100,8 +104,8 @@ public enum MicrometerBenchmarkScenario {
               value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
-  /** Otel recording to counter, and {@link MemoryMode#REUSABLE_DATA}. */
-  OTEL_SDK_COUNTER_REUSABLE_DATA(
+  /** Otel recording to counter, {@link MemoryMode#REUSABLE_DATA}, and known attributes. */
+  OTEL_COUNTER_REUSABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(MemoryMode.REUSABLE_DATA) {
         private DoubleCounter doubleCounter;
 
@@ -118,8 +122,8 @@ public enum MicrometerBenchmarkScenario {
           doubleCounter.add(value, threadState.attributesList[attributesIndex], Context.root());
         }
       }),
-  /** Otel recording to counter, and {@link MemoryMode#REUSABLE_DATA}. */
-  OTEL_SDK_COUNTER_IMMUTABLE_DATA(
+  /** Otel recording to counter, {@link MemoryMode#REUSABLE_DATA}, and known attributes. */
+  OTEL_COUNTER_IMMUTABLE_DATA_KNOWN_ATTRIBUTES(
       new AbstractOtelRecorderAndCollector(MemoryMode.IMMUTABLE_DATA) {
         private DoubleCounter doubleCounter;
 
@@ -137,12 +141,156 @@ public enum MicrometerBenchmarkScenario {
         }
       }),
   /**
-   * Micrometer recording to summary distribution (i.e. otel histogram) with bucket boundaries
-   * reflecting otel default explicit bucket boundaries, assuming tags ARE NOT known ahead of time
-   * (i.e. typical http.server.request.duration). See {@link
-   * {@link AbstractMicrometerRecorderAndCollector#setup(MicrometerBenchmark.ThreadState)} for configuration details.
+   * Otel recording to histogram with default explicit bucket boundaries, {@link
+   * MemoryMode#REUSABLE_DATA}, and unknown attributes.
    */
-  MICROMETER_DEFAULT_HISTOGRAM_UNKNOWN_TAGS(
+  OTEL_EXPLICIT_HISTOGRAM_REUSABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(MemoryMode.REUSABLE_DATA) {
+        private DoubleHistogram doubleHistogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleHistogram.record(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /**
+   * Otel recording to histogram with default explicit bucket boundaries, {@link
+   * MemoryMode#IMMUTABLE_DATA}, and unknown attributes.
+   */
+  OTEL_EXPLICIT_HISTOGRAM_IMMUTABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(MemoryMode.IMMUTABLE_DATA) {
+        private DoubleHistogram doubleHistogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleHistogram.record(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /**
+   * Otel recording to histogram with base2 exponential aggregation, {@link
+   * MemoryMode#REUSABLE_DATA}, and unknown attributes.
+   */
+  OTEL_EXPONENTIAL_HISTOGRAM_REUSABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(
+          MemoryMode.REUSABLE_DATA, Aggregation.base2ExponentialBucketHistogram()) {
+        private DoubleHistogram doubleHistogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleHistogram.record(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /**
+   * Otel recording to histogram with base2 exponential aggregation, {@link
+   * MemoryMode#IMMUTABLE_DATA}, and unknown attributes.
+   */
+  OTEL_EXPONENTIAL_HISTOGRAM_IMMUTABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(
+          MemoryMode.IMMUTABLE_DATA, Aggregation.base2ExponentialBucketHistogram()) {
+        private DoubleHistogram doubleHistogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleHistogram = sdkMeterProvider.get("meter").histogramBuilder("histogram").build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleHistogram.record(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /** Otel recording to counter, {@link MemoryMode#REUSABLE_DATA}, and unknown attributes. */
+  OTEL_COUNTER_REUSABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(MemoryMode.REUSABLE_DATA) {
+        private DoubleCounter doubleCounter;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleCounter =
+              sdkMeterProvider.get("meter").counterBuilder("counter").ofDoubles().build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleCounter.add(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /** Otel recording to counter, {@link MemoryMode#REUSABLE_DATA}, and unknown attributes. */
+  OTEL_COUNTER_IMMUTABLE_DATA_UNKNOWN_ATTRIBUTES(
+      new AbstractOtelRecorderAndCollector(MemoryMode.IMMUTABLE_DATA) {
+        private DoubleCounter doubleCounter;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          doubleCounter =
+              sdkMeterProvider.get("meter").counterBuilder("counter").ofDoubles().build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          doubleCounter.add(
+              value,
+              Attributes.of(
+                  MicrometerBenchmark.ATTRIBUTE_KEY, threadState.labelValues[attributesIndex]),
+              Context.root());
+        }
+      }),
+  /**
+   * Micrometer recording to summary distribution (i.e. otel histogram) with bucket boundaries
+   * reflecting otel default explicit bucket boundaries, assuming tags ARE NOT known ahead of
+   * time
+   * (i.e. typical http.server.request.duration). See {@link
+   * {@link AbstractMicrometerRecorderAndCollector#setup(MicrometerBenchmark.ThreadState)} for
+   * configuration details.
+   */
+  MICROMETER_EXPLICIT_HISTOGRAM_UNKNOWN_TAGS(
       new AbstractMicrometerRecorderAndCollector() {
         @Override
         public void record(
@@ -156,7 +304,7 @@ public enum MicrometerBenchmarkScenario {
    * {@link AbstractMicrometerRecorderAndCollector#setup(MicrometerBenchmark.ThreadState)} for
    * configuration details.
    */
-  MICROMETER_DEFAULT_HISTOGRAM_KNOWN_TAGS(
+  MICROMETER_EXPLICIT_HISTOGRAM_KNOWN_TAGS(
       new AbstractMicrometerRecorderAndCollector() {
         private DistributionSummary[] summaries;
 
@@ -187,12 +335,12 @@ public enum MicrometerBenchmarkScenario {
   /** Micrometer recording to counter, assuming tags ARE known ahead of time. */
   MICROMETER_COUNTER_KNOWN_TAGS(
       new AbstractMicrometerRecorderAndCollector() {
-        private Counter[] counters;
+        private io.micrometer.core.instrument.Counter[] counters;
 
         @Override
         public void setup(MicrometerBenchmark.ThreadState threadState) {
           super.setup(threadState);
-          counters = new Counter[threadState.tagsList.length];
+          counters = new io.micrometer.core.instrument.Counter[threadState.tagsList.length];
           for (int i = 0; i < threadState.tagsList.length; i++) {
             counters[i] = registry.counter("counter", threadState.tagsList[i]);
           }
@@ -202,6 +350,160 @@ public enum MicrometerBenchmarkScenario {
         public void record(
             MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
           counters[attributesIndex].increment(value);
+        }
+      }),
+  /**
+   * Prometheus recording to histogram with explicit bucket boundaries aligned to Otel defaults with
+   * unknown labels.
+   */
+  PROMETHEUS_EXPLICIT_HISTOGRAM_UNKNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private Histogram histogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          histogram =
+              Histogram.builder()
+                  .name("histogram")
+                  .withoutExemplars()
+                  .classicUpperBounds(
+                      0d, 5d, 10d, 25d, 50d, 75d, 100d, 250d, 500d, 750d, 1_000d, 2_500d, 5_000d,
+                      7_500d, 10_000d)
+                  .labelNames("key")
+                  .build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          histogram.labelValues(threadState.labelValues[attributesIndex]).observe(value);
+        }
+      }),
+  /** Prometheus recording to histogram with exponential histogram with unknown labels. */
+  PROMETHEUS_EXPONENTIAL_HISTOGRAM_UNKNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private Histogram histogram;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          histogram =
+              Histogram.builder()
+                  .name("histogram")
+                  .withoutExemplars()
+                  .nativeOnly()
+                  .labelNames("key")
+                  .build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          histogram.labelValues(threadState.labelValues[attributesIndex]).observe(value);
+        }
+      }),
+  /** Prometheus recording to counter with unknown labels. */
+  PROMETHEUS_COUNTER_UNKNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private io.prometheus.metrics.core.metrics.Counter counter;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          counter =
+              io.prometheus.metrics.core.metrics.Counter.builder()
+                  .name("counter")
+                  .withoutExemplars()
+                  .labelNames("key")
+                  .build();
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          counter.labelValues(threadState.labelValues[attributesIndex]).inc(value);
+        }
+      }),
+
+  /**
+   * Prometheus recording to histogram with explicit bucket boundaries aligned to Otel defaults with
+   * known labels.
+   */
+  PROMETHEUS_EXPLICT_HISTOGRAM_KNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private DistributionDataPoint[] histogramPoints;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          Histogram histogram =
+              Histogram.builder()
+                  .name("histogram")
+                  .withoutExemplars()
+                  .classicUpperBounds(
+                      0d, 5d, 10d, 25d, 50d, 75d, 100d, 250d, 500d, 750d, 1_000d, 2_500d, 5_000d,
+                      7_500d, 10_000d)
+                  .labelNames("key")
+                  .build();
+          histogramPoints = new DistributionDataPoint[threadState.labelValues.length];
+          for (int i = 0; i < threadState.labelValues.length; i++) {
+            histogramPoints[i] = histogram.labelValues(threadState.labelValues[i]);
+          }
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          histogramPoints[attributesIndex].observe(value);
+        }
+      }),
+  /** Prometheus recording to histogram with exponential histogram with known labels. */
+  PROMETHEUS_EXPONENTIAL_HISTOGRAM_KNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private DistributionDataPoint[] histogramPoints;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          Histogram histogram =
+              Histogram.builder().name("histogram").withoutExemplars().nativeOnly().labelNames("key").build();
+          histogramPoints = new DistributionDataPoint[threadState.labelValues.length];
+          for (int i = 0; i < threadState.labelValues.length; i++) {
+            histogramPoints[i] = histogram.labelValues(threadState.labelValues[i]);
+          }
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          histogramPoints[attributesIndex].observe(value);
+        }
+      }),
+  /** Prometheus recording to counter with known labels. */
+  PROMETHEUS_COUNTER_KNOWN_LABELS(
+      new AbstractPrometheusRecorderAndCollector() {
+        private CounterDataPoint[] counterPoints;
+
+        @Override
+        public void setup(MicrometerBenchmark.ThreadState threadState) {
+          super.setup(threadState);
+          Counter counter =
+              io.prometheus.metrics.core.metrics.Counter.builder()
+                  .name("counter")
+                  .withoutExemplars()
+                  .labelNames("key")
+                  .build();
+          counterPoints = new CounterDataPoint[threadState.labelValues.length];
+          for (int i = 0; i < threadState.labelValues.length; i++) {
+            counterPoints[i] = counter.labelValues(threadState.labelValues[i]);
+          }
+        }
+
+        @Override
+        public void record(
+            MicrometerBenchmark.ThreadState threadState, double value, int attributesIndex) {
+          counterPoints[attributesIndex].inc(value);
         }
       });
 
