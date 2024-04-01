@@ -43,7 +43,10 @@ wire {
     "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
     "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
     "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
+    "com.foo.Parent",
   )
+
+  sourcePath("src/main/protos")
 
   custom {
     schemaHandlerFactoryClass = "io.opentelemetry.gradle.ProtoFieldsWireHandlerFactory"

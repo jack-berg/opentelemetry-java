@@ -252,6 +252,14 @@ public abstract class Serializer implements AutoCloseable {
     writeEndMessage();
   }
 
+  public <T> void serializeMessage(
+      ProtoFieldInfo field, T message, MarshalerContext context, StatelessMarshaler<T> marshaler)
+      throws IOException {
+    writeStartMessage(field, context.getSize());
+    marshaler.writeTo(context, this, message);
+    writeEndMessage();
+  }
+
   @SuppressWarnings("SameParameterValue")
   protected abstract void writeStartRepeatedPrimitive(
       ProtoFieldInfo field, int protoSizePerElement, int numElements) throws IOException;
@@ -359,6 +367,13 @@ public abstract class Serializer implements AutoCloseable {
       List<T> messages,
       MarshalerContext context,
       MessageConsumer<Serializer, T, MarshalerContext> consumer)
+      throws IOException;
+
+  public abstract <T> void serializeRepeatedMessage(
+      ProtoFieldInfo field,
+      List<T> messages,
+      MarshalerContext context,
+      StatelessMarshaler<T> marshaler)
       throws IOException;
 
   /** Writes start of repeated messages. */

@@ -189,6 +189,23 @@ final class JsonSerializer extends Serializer {
   }
 
   @Override
+  public <T> void serializeRepeatedMessage(
+      ProtoFieldInfo field,
+      List<T> messages,
+      MarshalerContext context,
+      StatelessMarshaler<T> marshaler)
+      throws IOException {
+    generator.writeArrayFieldStart(field.getJsonName());
+    for (int i = 0; i < messages.size(); i++) {
+      T message = messages.get(i);
+      generator.writeStartObject();
+      marshaler.writeTo(context, this, message);
+      generator.writeEndObject();
+    }
+    generator.writeEndArray();
+  }
+
+  @Override
   public void writeStartRepeated(ProtoFieldInfo field) throws IOException {
     generator.writeArrayFieldStart(field.getJsonName());
   }
@@ -213,6 +230,13 @@ final class JsonSerializer extends Serializer {
   void writeMessageValue(Marshaler message) throws IOException {
     generator.writeStartObject();
     message.writeTo(this);
+    generator.writeEndObject();
+  }
+
+  <T> void writeMessageValue(MarshalerContext context, StatelessMarshaler<T> marshaler, T value)
+      throws IOException {
+    generator.writeStartObject();
+    marshaler.writeTo(context, this, value);
     generator.writeEndObject();
   }
 

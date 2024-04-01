@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package com.foo;
+
+option java_multiple_files = true;
+option java_outer_classname = "Dummy";
+option java_package = "com.foo";
+
+message Parent {
+  string p1 = 1;
+  Child p2 = 2;
+  string p3 = 3;
+}
+
+message Child {
+  repeated GrandChild c1 = 1;
+  int32 c2 = 2;
+}
+
+message GrandChild {
+  repeated int64 g1 = 1;
+}

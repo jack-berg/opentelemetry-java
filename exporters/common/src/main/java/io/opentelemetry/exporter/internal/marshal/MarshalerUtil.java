@@ -128,7 +128,7 @@ public final class MarshalerUtil {
     return sizeRepeatedFixed64(field, values.size());
   }
 
-  private static int sizeRepeatedFixed64(ProtoFieldInfo field, int numValues) {
+  public static int sizeRepeatedFixed64(ProtoFieldInfo field, int numValues) {
     if (numValues == 0) {
       return 0;
     }
@@ -198,6 +198,20 @@ public final class MarshalerUtil {
     int fieldTagSize = field.getTagSize();
     for (Marshaler message : repeatedMessage) {
       int fieldSize = message.getBinarySerializedSize();
+      size += fieldTagSize + CodedOutputStream.computeUInt32SizeNoTag(fieldSize) + fieldSize;
+    }
+    return size;
+  }
+
+  public static <T> int sizeRepeatedMessage(
+      MarshalerContext context,
+      ProtoFieldInfo field,
+      StatelessMarshaler<T> marshaler,
+      List<T> repeatedMessage) {
+    int size = 0;
+    int fieldTagSize = field.getTagSize();
+    for (T message : repeatedMessage) {
+      int fieldSize = marshaler.getBinarySerializedSize(context, message);
       size += fieldTagSize + CodedOutputStream.computeUInt32SizeNoTag(fieldSize) + fieldSize;
     }
     return size;
