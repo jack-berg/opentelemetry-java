@@ -19,7 +19,7 @@ final class SdkTracer implements ExtendedTracer {
 
   private final TracerSharedState sharedState;
   private final InstrumentationScopeInfo instrumentationScopeInfo;
-  private final boolean tracerEnabled;
+  private boolean tracerEnabled;
 
   SdkTracer(
       TracerSharedState sharedState,
@@ -44,6 +44,10 @@ final class SdkTracer implements ExtendedTracer {
     }
     return new SdkSpanBuilder(
         spanName, instrumentationScopeInfo, sharedState, sharedState.getSpanLimits());
+  }
+
+  void updateTracerConfig(TracerConfig tracerConfig) {
+    this.tracerEnabled = tracerConfig.isEnabled();
   }
 
   // Visible for testing
