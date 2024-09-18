@@ -33,30 +33,71 @@ import javax.annotation.Nullable;
 @SuppressWarnings("unchecked")
 final class FilteredAttributes implements Attributes {
 
-  private static final int BITS_PER_INTEGER = 32;
-
   // Backing source data from ImmutableKeyValuePairs.data. This array MUST NOT be mutated.
   private final Object[] sourceData;
-  // The bits of filteredIndices track whether the first 32 key-values of sourceData should be
-  // excluded in the output. A bit equal to 1 indicates the sourceData key at i*2 should be
-  // excluded. overflowFilteredIndices is used when more than 32 key-value pairs are present in
-  // sourceData.
-  private final int filteredIndices;
-  @Nullable private final BitSet overflowFilteredIndices;
+  private final FilteredIndices filteredIndices;
   private final int hashcode;
   private final int size;
 
   private FilteredAttributes(
-      Object[] sourceData,
-      int filteredIndices,
-      @Nullable BitSet overflowFilteredIndices,
-      int hashcode,
-      int size) {
+      Object[] sourceData, FilteredIndices filteredIndices, int hashcode, int size) {
     this.sourceData = sourceData;
     this.filteredIndices = filteredIndices;
-    this.overflowFilteredIndices = overflowFilteredIndices;
     this.hashcode = hashcode;
     this.size = size;
+  }
+
+  private static FilteredIndices createFilteredIndices(int size) {
+    if (size <= SmallFilteredIndices.BITS_PER_INTEGER) {
+      return new SmallFilteredIndices();
+    }
+    return new BitSetFilteredIndices(size);
+  }
+
+  /** Tracks whether attribute entries are filtered. */
+  private interface FilteredIndices {
+    void excludeFromOutput(int index);
+
+    boolean includeInOutput(int index);
+  }
+
+  /**
+   * {@link FilteredIndices} which can track at most {@link #BITS_PER_INTEGER} entries using the
+   * bits of an integer.
+   */
+  private static class SmallFilteredIndices implements FilteredIndices {
+    private static final int BITS_PER_INTEGER = 32;
+
+    private int filteredIndices = 0;
+
+    @Override
+    public void excludeFromOutput(int index) {
+      filteredIndices = filteredIndices | (1 << index);
+    }
+
+    @Override
+    public boolean includeInOutput(int index) {
+      return (filteredIndices & (1 << index)) == 0;
+    }
+  }
+
+  /** {@link FilteredIndices} which can track an arbitrary number of bits using a {@link BitSet}. */
+  private static class BitSetFilteredIndices implements FilteredIndices {
+    private final BitSet bitSet;
+
+    private BitSetFilteredIndices(int size) {
+      this.bitSet = new BitSet(size);
+    }
+
+    @Override
+    public void excludeFromOutput(int index) {
+      bitSet.set(index);
+    }
+
+    @Override
+    public boolean includeInOutput(int index) {
+      return !bitSet.get(index);
+    }
   }
 
   /**
@@ -81,23 +122,15 @@ final class FilteredAttributes implements Attributes {
     // Compute filteredIndices (and overflowIndices if needed) during initialization. Compute
     // hashcode at the same time to avoid iteration later.
     Object[] sourceData = ((ImmutableKeyValuePairs<?, ?>) source).getData();
-    int filteredIndices = 0;
-    BitSet overflowFilteredIndices =
-        source.size() > BITS_PER_INTEGER ? new BitSet(source.size() - BITS_PER_INTEGER) : null;
+    FilteredIndices filteredIndices = createFilteredIndices(source.size());
     int hashcode = 1;
     int size = 0;
     for (int i = 0; i < sourceData.length; i += 2) {
       int filterIndex = i / 2;
       // If the sourceData key isn't present in includedKeys, record the exclusion in
-      // filteredIndices (or
-      // overflowFilteredIndices based on the index).
+      // filteredIndices.
       if (!includedKeys.contains(sourceData[i])) {
-        // Record
-        if (filterIndex < BITS_PER_INTEGER) {
-          filteredIndices = filteredIndices | (1 << filterIndex);
-        } else {
-          overflowFilteredIndices.set(filterIndex - BITS_PER_INTEGER);
-        }
+        filteredIndices.excludeFromOutput(filterIndex);
       } else { // The key-value is included in the output, record in the hashcode and size.
         hashcode = 31 * hashcode + sourceData[i].hashCode();
         hashcode = 31 * hashcode + sourceData[i + 1].hashCode();
@@ -108,8 +141,7 @@ final class FilteredAttributes implements Attributes {
     if (size == 0) {
       return Attributes.empty();
     }
-    return new FilteredAttributes(
-        sourceData, filteredIndices, overflowFilteredIndices, hashcode, size);
+    return new FilteredAttributes(sourceData, filteredIndices, hashcode, size);
   }
 
   private static Attributes convertToStandardImplementation(Attributes source) {
@@ -254,12 +286,7 @@ final class FilteredAttributes implements Attributes {
     return joiner.toString();
   }
 
-  @SuppressWarnings("NullAway")
   private boolean includeIndexInOutput(int sourceIndex) {
-    int bitIndex = sourceIndex / 2;
-    if (bitIndex < BITS_PER_INTEGER) {
-      return (filteredIndices & (1 << bitIndex)) == 0;
-    }
-    return !overflowFilteredIndices.get(bitIndex - BITS_PER_INTEGER);
+    return filteredIndices.includeInOutput(sourceIndex / 2);
   }
 }
