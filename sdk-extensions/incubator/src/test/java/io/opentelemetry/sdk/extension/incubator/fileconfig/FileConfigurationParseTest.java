@@ -327,8 +327,7 @@ class FileConfigurationParseTest {
                                             .BASE_2_EXPONENTIAL_BUCKET_HISTOGRAM))))
             .withProducers(
                 Collections.singletonList(
-                    new MetricProducerModel()
-                        .withAdditionalProperty("prometheus", Collections.emptyMap())));
+                    new MetricProducerModel().withAdditionalProperty("prometheus", null)));
     MetricReaderModel metricReader3 =
         new MetricReaderModel()
             .withPeriodic(
@@ -364,6 +363,8 @@ class FileConfigurationParseTest {
                             .withIncluded(Arrays.asList("key1", "key2"))
                             .withExcluded(Collections.singletonList("key3"))));
     meterProvider.withViews(Collections.singletonList(view));
+
+    meterProvider.withExemplarFilter(MeterProviderModel.ExemplarFilter.TRACE_BASED);
 
     expected.withMeterProvider(meterProvider);
     // end MeterProvider config
@@ -472,6 +473,8 @@ class FileConfigurationParseTest {
       assertThat(configMeterProvider.getReaders())
           .isEqualTo(Arrays.asList(metricReader1, metricReader2, metricReader3));
       assertThat(configMeterProvider.getViews()).isEqualTo(Collections.singletonList(view));
+      assertThat(configMeterProvider.getExemplarFilter())
+          .isEqualTo(meterProvider.getExemplarFilter());
 
       // Instrumentation config
       InstrumentationModel configInstrumentation = config.getInstrumentation();

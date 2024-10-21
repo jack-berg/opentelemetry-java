@@ -15,6 +15,8 @@ import io.opentelemetry.sdk.extension.incubator.fileconfig.internal.model.Stream
 import io.opentelemetry.sdk.extension.incubator.fileconfig.internal.model.ViewModel;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
+import io.opentelemetry.sdk.metrics.internal.SdkMeterProviderUtil;
+import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarFilter;
 import java.io.Closeable;
 import java.util.List;
 
@@ -55,6 +57,21 @@ final class MeterProviderFactory implements Factory<MeterProviderModel, SdkMeter
                 InstrumentSelectorFactory.getInstance().create(selector, spiHelper, closeables),
                 ViewFactory.getInstance().create(stream, spiHelper, closeables));
           });
+    }
+
+    MeterProviderModel.ExemplarFilter exemplarFilter = model.getExemplarFilter();
+    if (exemplarFilter != null) {
+      switch (exemplarFilter) {
+        case ALWAYS_ON:
+          SdkMeterProviderUtil.setExemplarFilter(builder, ExemplarFilter.alwaysOn());
+          break;
+        case ALWAYS_OFF:
+          SdkMeterProviderUtil.setExemplarFilter(builder, ExemplarFilter.alwaysOff());
+          break;
+        case TRACE_BASED:
+          SdkMeterProviderUtil.setExemplarFilter(builder, ExemplarFilter.traceBased());
+          break;
+      }
     }
 
     return builder;
