@@ -7,6 +7,7 @@ package io.opentelemetry.sdk.trace.internal;
 
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.internal.ScopeConfigurator;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.SdkTracerProviderBuilder;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -54,6 +55,18 @@ public final class SdkTracerProviderUtil {
     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
       throw new IllegalStateException(
           "Error calling addTracerConfiguratorCondition on SdkTracerProviderBuilder", e);
+    }
+  }
+
+  /** Reflectively update the {@code sdkTracerProvider} to the {@code targetConfiguration}. */
+  public static void update(
+      SdkTracerProvider sdkTracerProvider, SdkTracerProvider targetConfiguration) {
+    try {
+      Method method = SdkTracerProvider.class.getDeclaredMethod("update", SdkTracerProvider.class);
+      method.setAccessible(true);
+      method.invoke(sdkTracerProvider, targetConfiguration);
+    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+      throw new IllegalStateException("Error calling update on SdkTracerProvider", e);
     }
   }
 }

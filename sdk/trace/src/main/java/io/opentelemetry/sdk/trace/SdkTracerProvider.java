@@ -30,7 +30,7 @@ public final class SdkTracerProvider implements TracerProvider, Closeable {
   static final String DEFAULT_TRACER_NAME = "";
   private final TracerSharedState sharedState;
   private final ComponentRegistry<SdkTracer> tracerSdkComponentRegistry;
-  private final ScopeConfigurator<TracerConfig> tracerConfigurator;
+  private ScopeConfigurator<TracerConfig> tracerConfigurator;
 
   /**
    * Returns a new {@link SdkTracerProviderBuilder} for {@link SdkTracerProvider}.
@@ -100,8 +100,26 @@ public final class SdkTracerProvider implements TracerProvider, Closeable {
     return sharedState.getSampler();
   }
 
-  // currently not public as experimental
-  void updateTracerConfigurations() {
+  /**
+   * Updates this {@link SdkTracerProvider} with certain configuration options from the {@code
+   * targetSdkTracerProvider}.
+   *
+   * <p>The {@code targetSdkTracerProvider} is used to convey the desired configuration state.
+   * Callers SHOULD call {@link SdkTracerProvider#shutdown()} on {@code targetSdkTracerProvider} to
+   * clean up resources.
+   *
+   * <p>The following components are updated:
+   *
+   * <ul>
+   *   <li>The {@link TracerConfig} for all outstanding {@link Tracer}s is recomputed using the
+   *       target' {@link SdkTracerProvider#tracerConfigurator}.
+   *   <li>TODO: add support for updating sampler, processor, span limits
+   * </ul>
+   *
+   * @param targetSdkTracerProvider the target
+   */
+  void update(SdkTracerProvider targetSdkTracerProvider) {
+    this.tracerConfigurator = targetSdkTracerProvider.tracerConfigurator;
     this.tracerSdkComponentRegistry
         .getComponents()
         .forEach(

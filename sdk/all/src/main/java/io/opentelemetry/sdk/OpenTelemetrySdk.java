@@ -19,8 +19,6 @@ import io.opentelemetry.sdk.logs.SdkLoggerProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import java.io.Closeable;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -169,20 +167,6 @@ public final class OpenTelemetrySdk implements OpenTelemetry, Closeable {
 
     public SdkTracerProvider unobfuscate() {
       return delegate;
-    }
-
-    // currently not public as experimental
-    void updateTracerConfigurations() {
-      // and delegate method is experimental so also not public
-      // It would be: delegate.updateTracerConfigurations();
-      try {
-        Method method = SdkTracerProvider.class.getDeclaredMethod("updateTracerConfigurations");
-        method.setAccessible(true);
-        method.invoke(delegate);
-      } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-        throw new IllegalStateException(
-            "Error calling SdkTracerProvider.updateTracerConfigurations(): ", e);
-      }
     }
   }
 

@@ -12,13 +12,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.incubator.trace.ExtendedTracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.sdk.common.Clock;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.internal.ScopeConfiguratorBuilder;
 import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.internal.TracerConfig;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -248,5 +251,29 @@ class SdkTracerProviderTest {
     tracer = (SdkTracer) tracerFactory.get("", "");
     assertThat(tracer.getInstrumentationScopeInfo().getName())
         .isEqualTo(SdkTracerProvider.DEFAULT_TRACER_NAME);
+  }
+
+  @Test
+  void update() {
+    SdkTracerProvider sdkTracerProvider =
+        SdkTracerProvider.builder()
+            .addSpanProcessor(spanProcessor)
+            .addTracerConfiguratorCondition(
+                ScopeConfiguratorBuilder.nameEquals("tracerA"), TracerConfig.disabled())
+            .build();
+
+    ExtendedTracer tracerA = (ExtendedTracer) sdkTracerProvider.get("tracerA");
+    ExtendedTracer tracerB = (ExtendedTracer) sdkTracerProvider.get("tracerB");
+    assertThat(tracerA.isEnabled()).isFalse();
+    assertThat(tracerB.isEnabled()).isTrue();
+
+    sdkTracerProvider.update(
+        SdkTracerProvider.builder()
+            .addTracerConfiguratorCondition(
+                ScopeConfiguratorBuilder.nameEquals("tracerA"), TracerConfig.enabled())
+            .build());
+
+    assertThat(tracerA.isEnabled()).isTrue();
+    assertThat(tracerB.isEnabled()).isTrue();
   }
 }
