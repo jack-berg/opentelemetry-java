@@ -29,6 +29,7 @@ import com.linecorp.armeria.testing.junit5.server.ServerExtension;
 import io.github.netmikey.logunit.api.LogCapturer;
 import io.opentelemetry.exporter.internal.FailedExportException;
 import io.opentelemetry.exporter.internal.TlsUtil;
+import io.opentelemetry.exporter.internal.auth.Authenticator;
 import io.opentelemetry.exporter.internal.compression.GzipCompressor;
 import io.opentelemetry.exporter.internal.http.HttpExporter;
 import io.opentelemetry.exporter.internal.http.HttpSender;
@@ -406,10 +407,14 @@ public abstract class AbstractHttpTelemetryExporterTest<T, U extends Message> {
   void withAuthenticator() {
     assumeThat(hasAuthenticatorSupport()).isTrue();
 
+    AtomicInteger authenticatorCallCount = new AtomicInteger();
+    Authenticator authenticator =
+        () -> Collections.singletonMap("key", "value" + authenticatorCallCount.incrementAndGet());
+
     TelemetryExporter<T> exporter =
         exporterBuilder()
             .setEndpoint(server.httpUri() + path)
-            .setAuthenticator(() -> Collections.singletonMap("key", "value"))
+            .setAuthenticator(authenticator)
             .build();
 
     addHttpError(401);
@@ -421,12 +426,29 @@ public abstract class AbstractHttpTelemetryExporterTest<T, U extends Message> {
                   .join(10, TimeUnit.SECONDS)
                   .isSuccess())
           .isTrue();
+      assertThat(authenticatorCallCount.get()).isEqualTo(1);
       assertThat(httpRequests)
           .element(0)
           .satisfies(req -> assertThat(req.headers().get("key")).isNull());
       assertThat(httpRequests)
           .element(1)
-          .satisfies(req -> assertThat(req.headers().get("key")).isEqualTo("value"));
+          .satisfies(req -> assertThat(req.headers().get("key")).isEqualTo("value1"));
+
+      // If we make a followup request without a 401, authenticator is never invoked and its headers
+      // are not included
+      httpRequests.clear();
+      assertThat(
+              exporter
+                  .export(Collections.singletonList(generateFakeTelemetry()))
+                  .join(10, TimeUnit.SECONDS)
+                  .isSuccess())
+          .isTrue();
+      assertThat(authenticatorCallCount.get()).isEqualTo(1);
+      assertThat(httpRequests).hasSize(1);
+      assertThat(httpRequests)
+          .element(0)
+          .satisfies(req -> assertThat(req.headers().get("key")).isNull());
+
     } finally {
       exporter.shutdown();
     }
