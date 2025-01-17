@@ -15,7 +15,7 @@ import java.util.Locale;
 import java.util.StringJoiner;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import okhttp3.Interceptor;
@@ -32,17 +32,17 @@ public final class RetryInterceptor implements Interceptor {
   private static final Logger logger = Logger.getLogger(RetryInterceptor.class.getName());
 
   private final RetryPolicy retryPolicy;
-  private final Function<Response, Boolean> isRetryable;
-  private final Function<IOException, Boolean> isRetryableException;
+  private final Predicate<Response> failResponseRetryPredicate;
+  private final Predicate<IOException> failExceptionRetryPredicate;
   private final Sleeper sleeper;
   private final BoundedLongGenerator randomLong;
 
   /** Constructs a new retrier. */
-  public RetryInterceptor(RetryPolicy retryPolicy, Function<Response, Boolean> isRetryable) {
+  public RetryInterceptor(RetryPolicy retryPolicy, Predicate<Response> failResponseRetryPredicate) {
     this(
         retryPolicy,
-        isRetryable,
-        RetryInterceptor::isRetryableException,
+        failResponseRetryPredicate,
+        resolveFailExceptionRetryPredicate(retryPolicy),
         TimeUnit.NANOSECONDS::sleep,
         bound -> ThreadLocalRandom.current().nextLong(bound));
   }
@@ -50,15 +50,24 @@ public final class RetryInterceptor implements Interceptor {
   // Visible for testing
   RetryInterceptor(
       RetryPolicy retryPolicy,
-      Function<Response, Boolean> isRetryable,
-      Function<IOException, Boolean> isRetryableException,
+      Predicate<Response> failResponseRetryPredicate,
+      Predicate<IOException> failExceptionRetryPredicate,
       Sleeper sleeper,
       BoundedLongGenerator randomLong) {
     this.retryPolicy = retryPolicy;
-    this.isRetryable = isRetryable;
-    this.isRetryableException = isRetryableException;
+    this.failResponseRetryPredicate = failResponseRetryPredicate;
+    this.failExceptionRetryPredicate = failExceptionRetryPredicate;
     this.sleeper = sleeper;
     this.randomLong = randomLong;
+  }
+
+  private static Predicate<IOException> resolveFailExceptionRetryPredicate(
+      RetryPolicy retryPolicy) {
+    Predicate<IOException> failExceptionRetryPredicate =
+        retryPolicy.getFailExceptionRetryPredicate();
+    return failExceptionRetryPredicate == null
+        ? RetryInterceptor::defaultFailExceptionRetryPredicate
+        : failExceptionRetryPredicate;
   }
 
   @Override
@@ -93,7 +102,7 @@ public final class RetryInterceptor implements Interceptor {
         exception = e;
       }
       if (response != null) {
-        boolean retryable = Boolean.TRUE.equals(isRetryable.apply(response));
+        boolean retryable = failResponseRetryPredicate.test(response);
         if (logger.isLoggable(Level.FINER)) {
           logger.log(
               Level.FINER,
@@ -109,7 +118,7 @@ public final class RetryInterceptor implements Interceptor {
         }
       }
       if (exception != null) {
-        boolean retryable = Boolean.TRUE.equals(isRetryableException.apply(exception));
+        boolean retryable = failExceptionRetryPredicate.test(exception);
         if (logger.isLoggable(Level.FINER)) {
           logger.log(
               Level.FINER,
@@ -145,7 +154,7 @@ public final class RetryInterceptor implements Interceptor {
   }
 
   // Visible for testing
-  static boolean isRetryableException(IOException e) {
+  static boolean defaultFailExceptionRetryPredicate(IOException e) {
     if (e instanceof SocketTimeoutException) {
       String message = e.getMessage();
       // Connect timeouts can produce SocketTimeoutExceptions with no message, or with "connect
