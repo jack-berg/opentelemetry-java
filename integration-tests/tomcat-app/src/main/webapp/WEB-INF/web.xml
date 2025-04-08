@@ -1,0 +1,10 @@
+<web-app xmlns="http://java.sun.com/xml/ns/javaee" version="3.0">
+  <servlet>
+    <servlet-name>TestServlet</servlet-name>
+    <servlet-class>io.opentelemetry.integrationtests.tomcat.TestServlet</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>TestServlet</servlet-name>
+    <url-pattern>/hello</url-pattern>
+  </servlet-mapping>
+</web-app>
