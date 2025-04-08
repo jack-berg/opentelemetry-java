@@ -26,7 +26,6 @@ public class TestServlet extends HttpServlet {
   Tracer tracer;
 
   public TestServlet() {
-    logger.info("hello world from servlet");
     sdk =
         OpenTelemetrySdk.builder()
             .setTracerProvider(
@@ -42,13 +41,11 @@ public class TestServlet extends HttpServlet {
             .build();
 
     tracer = sdk.getTracer("tracer");
-
-    tracer.spanBuilder("span constructor").startSpan().end();
   }
 
   @Override
   protected void service(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-    logger.info("hello world from servlet");
+    logger.info("TestServlet#service");
 
     Span span = tracer.spanBuilder("span").startSpan();
 
