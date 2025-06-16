@@ -2,7 +2,7 @@ plugins {
   `kotlin-dsl`
 
   // When updating, update below in dependencies too
-  id("com.diffplug.spotless") version "7.0.3"
+  id("com.diffplug.spotless") version "7.0.4"
 }
 
 if (!hasLauncherForJavaVersion(17)) {
@@ -50,11 +50,11 @@ repositories {
 }
 
 dependencies {
-  implementation(enforcedPlatform("com.squareup.wire:wire-bom:5.3.1"))
+  implementation(enforcedPlatform("com.squareup.wire:wire-bom:5.3.3"))
   implementation("com.google.auto.value:auto-value-annotations:1.11.0")
   // When updating, update above in plugins too
-  implementation("com.diffplug.spotless:spotless-plugin-gradle:7.0.3")
-  implementation("com.gradle.develocity:com.gradle.develocity.gradle.plugin:4.0.1")
+  implementation("com.diffplug.spotless:spotless-plugin-gradle:7.0.4")
+  implementation("com.gradle.develocity:com.gradle.develocity.gradle.plugin:4.0.2")
   implementation("com.squareup:javapoet:1.13.0")
   implementation("com.squareup.wire:wire-compiler")
   implementation("com.squareup.wire:wire-gradle-plugin")
@@ -65,7 +65,7 @@ dependencies {
   implementation("net.ltgt.gradle:gradle-errorprone-plugin:4.2.0")
   implementation("net.ltgt.gradle:gradle-nullaway-plugin:2.2.0")
   implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.21")
-  implementation("org.owasp:dependency-check-gradle:12.1.1")
+  implementation("org.owasp:dependency-check-gradle:12.1.3")
   implementation("ru.vyarus:gradle-animalsniffer-plugin:2.0.1")
 }
 
