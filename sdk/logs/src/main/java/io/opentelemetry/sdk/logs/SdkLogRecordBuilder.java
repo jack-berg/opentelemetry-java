@@ -128,6 +128,9 @@ class SdkLogRecordBuilder implements LogRecordBuilder {
     if (!logger.isEnabled(severity, context)) {
       return;
     }
+    if (Loopback.isLoopback(context) || Loopback.isLoopback(attributes)) {
+      return;
+    }
     long observedTimestampEpochNanos =
         this.observedTimestampEpochNanos == 0
             ? this.loggerSharedState.getClock().now()

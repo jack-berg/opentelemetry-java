@@ -163,4 +163,26 @@ class SdkLogRecordBuilderTest {
             equalTo(booleanKey("bk"), true),
             equalTo(longKey("ik"), 13L));
   }
+
+  @Test
+  void emit_HasLoopbackAttribute_SkipsProcessing() {
+    SdkLogger logger = mock(SdkLogger.class);
+    builder = new SdkLogRecordBuilder(loggerSharedState, SCOPE_INFO, logger);
+
+    builder.setAttribute(Loopback.loopbackAttribute, true).emit();
+
+    // Verify log was not processed
+    assertThat(emittedLog.get()).isNull();
+  }
+
+  @Test
+  void emit_HasLoopbackContext_SkipsProcessing() {
+    SdkLogger logger = mock(SdkLogger.class);
+    builder = new SdkLogRecordBuilder(loggerSharedState, SCOPE_INFO, logger);
+
+    builder.setContext(Loopback.withLoopback(Context.root())).emit();
+
+    // Verify log was not processed
+    assertThat(emittedLog.get()).isNull();
+  }
 }
