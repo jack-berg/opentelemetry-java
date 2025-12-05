@@ -8,7 +8,6 @@ package io.opentelemetry.sdk.logs;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Value;
 import io.opentelemetry.api.logs.LogRecordBuilder;
-import io.opentelemetry.api.logs.Loopback;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
@@ -130,12 +129,6 @@ class SdkLogRecordBuilder implements LogRecordBuilder {
     if (!logger.isEnabled(severity, context)) {
       return;
     }
-
-    Long loopbackFromContext = context.get(Loopback.loopbackContextKey);
-    if (Loopback.isLoopbackOtelSdk(loopbackFromContext)) {
-      return;
-    }
-
     long observedTimestampEpochNanos =
         this.observedTimestampEpochNanos == 0
             ? this.loggerSharedState.getClock().now()

@@ -3,66 +3,50 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.sdk.extension.incubator.slf4j;
+package io.opentelemetry.extension.slf4j;
 
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.Value;
 import io.opentelemetry.api.logs.Loopback;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.Scope;
-import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
-import io.opentelemetry.sdk.logs.LogRecordProcessor;
-import io.opentelemetry.sdk.logs.ReadWriteLogRecord;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 import org.slf4j.spi.LoggingEventBuilder;
 
-public final class Slf4jBridge implements LogRecordProcessor {
+public final class Slf4jBridge {
+
   private Slf4jBridge() {}
 
-  public static Slf4jBridge create() {
-    return new Slf4jBridge();
-  }
-
   @SuppressWarnings("CheckReturnValue")
-  @Override
-  public void onEmit(Context context, ReadWriteLogRecord logRecord) {
-    if (Loopback.isLoopbackOtelAppender(context.get(Loopback.loopbackContextKey))) {
+  public static void recordToSlf4j(
+      Context context,
+      String scopeName,
+      @Nullable String eventName,
+      @Nullable Value<?> bodyValue,
+      Attributes attributes,
+      Severity severity) {
+    if (Loopback.isLoopback(context)) {
       return;
     }
-
-    InstrumentationScopeInfo scopeInfo = logRecord.getInstrumentationScopeInfo();
-    Logger logger = LoggerFactory.getLogger(scopeInfo.getName());
-    Level level = toSlf4jLevel(logRecord.getSeverity());
+    Logger logger = LoggerFactory.getLogger(scopeName);
+    Level level = toSlf4jLevel(severity);
     if (!logger.isEnabledForLevel(level)) {
       return;
     }
-
     LoggingEventBuilder builder = logger.atLevel(level);
-
-    Value<?> bodyValue = logRecord.getBodyValue();
     if (bodyValue != null) {
       builder.setMessage(bodyValue.asString());
     }
-
-    logRecord
-        .getAttributes()
-        .forEach(
-            (key, value) -> {
-              builder.addKeyValue(key.getKey(), value);
-            });
+    attributes.forEach((key, value) -> builder.addKeyValue(key.getKey(), value));
 
     // append event_name last to take priority over attributes
-    String eventName = logRecord.getEventName();
     if (eventName != null) {
       builder.addKeyValue("event_name", eventName);
     }
-
-    try (Scope scope =
-        context.with(Loopback.loopbackContextKey, Loopback.withLoopbackOtelSdk()).makeCurrent()) {
-      builder.log();
-    }
+    builder.log();
   }
 
   private static Level toSlf4jLevel(Severity severity) {
