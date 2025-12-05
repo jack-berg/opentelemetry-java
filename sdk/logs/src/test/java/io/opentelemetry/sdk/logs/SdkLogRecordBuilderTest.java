@@ -11,6 +11,7 @@ import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.assertThat;
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.equalTo;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.when;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.Value;
+import io.opentelemetry.api.logs.Loopback;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
@@ -32,9 +34,14 @@ import io.opentelemetry.sdk.resources.Resource;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -164,25 +171,43 @@ class SdkLogRecordBuilderTest {
             equalTo(longKey("ik"), 13L));
   }
 
-  @Test
-  void emit_HasLoopbackAttribute_SkipsProcessing() {
+  @ParameterizedTest
+  @MethodSource("loopbackArgs")
+  void emit_WithLoopback(Consumer<SdkLogRecordBuilder> builderConsumer, boolean expected) {
     SdkLogger logger = mock(SdkLogger.class);
+    when(logger.isEnabled(any(), any())).thenReturn(true);
     builder = new SdkLogRecordBuilder(loggerSharedState, SCOPE_INFO, logger);
 
-    builder.setAttribute(Loopback.loopbackAttribute, true).emit();
+    builderConsumer.accept(builder);
+    builder.emit();
 
-    // Verify log was not processed
-    assertThat(emittedLog.get()).isNull();
+    assertThat(emittedLog.get() != null).isEqualTo(expected);
   }
 
-  @Test
-  void emit_HasLoopbackContext_SkipsProcessing() {
-    SdkLogger logger = mock(SdkLogger.class);
-    builder = new SdkLogRecordBuilder(loggerSharedState, SCOPE_INFO, logger);
+  private static Stream<Arguments> loopbackArgs() {
+    return Stream.of(
+        // No loopback context, log is emitted
+        Arguments.of(asConsumer(builder -> {}), true),
+        // SDK loopback context, log is not emitted
+        Arguments.of(
+            asConsumer(
+                builder ->
+                    builder.setContext(
+                        Context.current()
+                            .with(Loopback.loopbackContextKey, Loopback.withLoopbackOtelSdk()))),
+            false),
+        // Appender loopback context, log is emitted
+        Arguments.of(
+            asConsumer(
+                builder ->
+                    builder.setContext(
+                        Context.current()
+                            .with(
+                                Loopback.loopbackContextKey, Loopback.withLoopbackOtelAppender()))),
+            true));
+  }
 
-    builder.setContext(Loopback.withLoopback(Context.root())).emit();
-
-    // Verify log was not processed
-    assertThat(emittedLog.get()).isNull();
+  private static Consumer<SdkLogRecordBuilder> asConsumer(Consumer<SdkLogRecordBuilder> consumer) {
+    return consumer;
   }
 }
