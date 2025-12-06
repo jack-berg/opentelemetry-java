@@ -7,7 +7,6 @@ package io.opentelemetry.extension.slf4j;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.Value;
-import io.opentelemetry.api.logs.Loopback;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.context.Context;
 import javax.annotation.Nullable;
@@ -28,9 +27,6 @@ public final class Slf4jBridge {
       @Nullable Value<?> bodyValue,
       Attributes attributes,
       Severity severity) {
-    if (Loopback.isLoopback(context)) {
-      return;
-    }
     Logger logger = LoggerFactory.getLogger(scopeName);
     Level level = toSlf4jLevel(severity);
     if (!logger.isEnabledForLevel(level)) {

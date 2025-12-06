@@ -11,5 +11,5 @@ otelJava.moduleName.set("io.opentelemetry.extension.slf4j")
 dependencies {
   api(project(":api:all"))
 
-  implementation("org.slf4j:slf4j-api:2.0.17")
+  compileOnly("org.slf4j:slf4j-api:2.0.17")
 }
