@@ -193,13 +193,13 @@ public final class DoubleExplicitBucketHistogramAggregator
     protected void doRecordDouble(double value) {
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-      synchronized (lock) {
+      // synchronized (lock) {
         this.sum += value;
         this.min = Math.min(this.min, value);
         this.max = Math.max(this.max, value);
         this.count++;
         this.counts[bucketIndex]++;
-      }
+      // }
     }
   }
 }
