@@ -826,43 +826,46 @@ public class SynchronousMetricStorageTest {
     List<Arguments> argumentsList = new ArrayList<>();
 
     for (MemoryMode memoryMode : MemoryMode.values()) {
-      Aggregator<PointData> aggregator =
-          ((AggregatorFactory) Aggregation.sum())
-              .createAggregator(
-                  DESCRIPTOR, asExemplarFilterInternal(ExemplarFilter.alwaysOff()), memoryMode);
+      // TODO: run multiple times to gain confidence. Remove before merging.
+      for (int i = 0; i < 5; i++) {
+        Aggregator<PointData> aggregator =
+            ((AggregatorFactory) Aggregation.sum())
+                .createAggregator(
+                    DESCRIPTOR, asExemplarFilterInternal(ExemplarFilter.alwaysOff()), memoryMode);
 
-      argumentsList.add(
-          Arguments.of(
-              // Delta
-              new DefaultSynchronousMetricStorage<>(
-                  RegisteredReader.create(
-                      InMemoryMetricReader.builder()
-                          .setAggregationTemporalitySelector(unused -> AggregationTemporality.DELTA)
-                          .setMemoryMode(memoryMode)
-                          .build(),
-                      ViewRegistry.create()),
-                  METRIC_DESCRIPTOR,
-                  aggregator,
-                  AttributesProcessor.noop(),
-                  CARDINALITY_LIMIT,
-                  /* enabled= */ true),
-              (BiConsumer<Double, AtomicDouble>)
-                  (value, cumulativeCount) -> cumulativeCount.addAndGet(value)));
+        argumentsList.add(
+            Arguments.of(
+                // Delta
+                new DefaultSynchronousMetricStorage<>(
+                    RegisteredReader.create(
+                        InMemoryMetricReader.builder()
+                            .setAggregationTemporalitySelector(unused -> AggregationTemporality.DELTA)
+                            .setMemoryMode(memoryMode)
+                            .build(),
+                        ViewRegistry.create()),
+                    METRIC_DESCRIPTOR,
+                    aggregator,
+                    AttributesProcessor.noop(),
+                    CARDINALITY_LIMIT,
+                    /* enabled= */ true),
+                (BiConsumer<Double, AtomicDouble>)
+                    (value, cumulativeCount) -> cumulativeCount.addAndGet(value)));
 
-      argumentsList.add(
-          Arguments.of(
-              // Cumulative
-              new DefaultSynchronousMetricStorage<>(
-                  RegisteredReader.create(
-                      InMemoryMetricReader.builder().setMemoryMode(memoryMode).build(),
-                      ViewRegistry.create()),
-                  METRIC_DESCRIPTOR,
-                  aggregator,
-                  AttributesProcessor.noop(),
-                  CARDINALITY_LIMIT,
-                  /* enabled= */ true),
-              (BiConsumer<Double, AtomicDouble>)
-                  (value, cumulativeCount) -> cumulativeCount.set(value)));
+        argumentsList.add(
+            Arguments.of(
+                // Cumulative
+                new DefaultSynchronousMetricStorage<>(
+                    RegisteredReader.create(
+                        InMemoryMetricReader.builder().setMemoryMode(memoryMode).build(),
+                        ViewRegistry.create()),
+                    METRIC_DESCRIPTOR,
+                    aggregator,
+                    AttributesProcessor.noop(),
+                    CARDINALITY_LIMIT,
+                    /* enabled= */ true),
+                (BiConsumer<Double, AtomicDouble>)
+                    (value, cumulativeCount) -> cumulativeCount.set(value)));
+      }
     }
 
     return argumentsList.stream();
