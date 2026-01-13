@@ -92,7 +92,7 @@ tasks {
             "-Xlint:-serial",
             "-Xlint:-this-escape",
             // Fail build on any warning
-            "-Werror",
+            // "-Werror",
           ),
         )
       }

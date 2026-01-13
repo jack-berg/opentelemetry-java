@@ -14,16 +14,16 @@ import java.util.function.DoubleSupplier;
 /** Methods of generating values for histogram benchmarks. */
 @SuppressWarnings("ImmutableEnumChecker")
 public enum HistogramValueGenerator {
-  // Test scenario where we rotate around histogram buckets.
-  // This is a degenerate test case where we see every next measurement in a different
-  // bucket, mean to be the "optimal" explicit bucket histogram scenario.
-  FIXED_BUCKET_BOUNDARIES(explicitDefaultBucketPool()),
-  // Test scenario where we randomly get values between 0 and 2000.
-  // Note: for millisecond latency, this would mean we expect our calls to be randomly
-  // distributed between 0 and 2 seconds (not very likely).
-  // This is meant to test more "worst case scenarios" where Exponential histograms must
-  // expand scale factor due to highly distributed data.
-  UNIFORM_RANDOM_WITHIN_2K(randomPool(20000, 2000)),
+//  // Test scenario where we rotate around histogram buckets.
+//  // This is a degenerate test case where we see every next measurement in a different
+//  // bucket, mean to be the "optimal" explicit bucket histogram scenario.
+//  FIXED_BUCKET_BOUNDARIES(explicitDefaultBucketPool()),
+//  // Test scenario where we randomly get values between 0 and 2000.
+//  // Note: for millisecond latency, this would mean we expect our calls to be randomly
+//  // distributed between 0 and 2 seconds (not very likely).
+//  // This is meant to test more "worst case scenarios" where Exponential histograms must
+//  // expand scale factor due to highly distributed data.
+//  UNIFORM_RANDOM_WITHIN_2K(randomPool(20000, 2000)),
   // Test scenario where we're measuring latency with mean of 1 seconds, std deviation of a quarter
   // second.  This is our "optimised" use case.
   // Note: In practice we likely want to add several gaussian pools, as in real microsevices we

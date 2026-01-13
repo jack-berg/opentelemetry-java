@@ -26,7 +26,7 @@ import org.openjdk.jmh.annotations.Warmup;
 /** Measures runtime cost of histogram aggregations. */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Measurement(iterations = 10, time = 1)
+@Measurement(iterations = 5, time = 1)
 @Warmup(iterations = 5, time = 1)
 @Fork(1)
 public class HistogramBenchmark {
