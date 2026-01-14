@@ -104,12 +104,19 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     if (!enabled) {
       return;
     }
-    try {
+    if (aggregationTemporality == AggregationTemporality.DELTA) {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordLong(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
+    } else {
       AggregatorHandle<T> handle =
           getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
       handle.recordLong(value, attributes, context);
-    } finally {
-      releaseHolderForRecord(aggregatorHolder);
     }
   }
 
@@ -128,13 +135,19 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
               + ". Dropping measurement.");
       return;
     }
-    AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
-    try {
+    if (aggregationTemporality == AggregationTemporality.DELTA) {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordDouble(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
+    } else {
       AggregatorHandle<T> handle =
           getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
       handle.recordDouble(value, attributes, context);
-    } finally {
-      releaseHolderForRecord(aggregatorHolder);
     }
   }
 
@@ -336,10 +349,8 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     boolean reset = false;
     long start = startEpochNanos;
 
-    AggregatorHolder<T> aggregatorHolder = this.aggregatorHolder;
     ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles =
-        aggregatorHolder.aggregatorHandles;
-    aggregatorHolder.acquireForCollect();
+        this.aggregatorHolder.aggregatorHandles;
 
     List<T> points;
     if (memoryMode == REUSABLE_DATA) {
@@ -426,8 +437,6 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
       }
       for (int i = 0; i < activeRecordingThreads.length; i++) {
         AtomicInteger val = activeRecordingThreads[i];
-        // TODO: invert this loop. Iterate through the threads repeatedly until all are done
-        // recording, rather than waiting on each one sequentially.
         while (val.get() > 1) {
           Thread.yield();
         }
