@@ -138,6 +138,7 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
+      // TODO: if the cumulative path isn't going to provide concurrency controls, then this code needs adjustment to avoid partial writes.
       HistogramPointData pointData;
       long currentCount = 0;
       for (int i = 0; i < counts.length; i++) {

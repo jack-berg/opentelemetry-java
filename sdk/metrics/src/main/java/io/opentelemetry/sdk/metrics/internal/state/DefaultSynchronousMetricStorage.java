@@ -29,7 +29,6 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -171,9 +170,11 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
    */
   private AggregatorHolder<T> getHolderForRecord() {
     AggregatorHolder<T> aggregatorHolder = this.aggregatorHolder;
-    while (!aggregatorHolder.tryAcquireForRecord()) {
-      aggregatorHolder.releaseForRecord();
+    RecordCollectLock recordCollectLock = aggregatorHolder.lockForThread();
+    while (!recordCollectLock.tryAcquireForRecord()) {
+      recordCollectLock.releaseForRecord();
       aggregatorHolder = this.aggregatorHolder;
+      recordCollectLock = aggregatorHolder.lockForThread();
       Thread.yield();
     }
     return aggregatorHolder;
@@ -184,7 +185,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
    * that recording is complete, and it is safe to collect.
    */
   private void releaseHolderForRecord(AggregatorHolder<T> aggregatorHolder) {
-    aggregatorHolder.releaseForRecord();
+    aggregatorHolder.lockForThread().releaseForRecord();
   }
 
   private AggregatorHandle<T> getAggregatorHandle(
@@ -264,7 +265,13 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     //   4. After Collect finishes, it decrements -1, allowing recording to continue
     // - The problem is that the AtomicLong used to coordinate between record and collect is under
     // high contention is a bottleneck under high concurrency.
-    holder.acquireForCollect();
+    for (RecordCollectLock lock : holder.threadRecordCollectLocks) {
+      // No need to call releaseForCollect at end because AggregationHolder and all the locks get thrown away after each collect
+      lock.acquireForCollect();
+    }
+    for (RecordCollectLock lock : holder.threadRecordCollectLocks) {
+      lock.awaitReadyToCollect();
+    }
     ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = holder.aggregatorHandles;
 
     List<T> points;
@@ -409,7 +416,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     // (AggregatorHolder), and so if a recording thread encounters an odd value,
     // all it needs to do is release the "read lock" it just obtained (decrementing by 2),
     // and then grab and record against the new current interval (AggregatorHolder).
-    private final AtomicInteger[] activeRecordingThreads;
+    private final RecordCollectLock[] threadRecordCollectLocks;
 
     private AggregatorHolder() {
       this(new ConcurrentHashMap<>());
@@ -417,35 +424,16 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
 
     private AggregatorHolder(ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles) {
       this.aggregatorHandles = aggregatorHandles;
-      activeRecordingThreads = new AtomicInteger[Runtime.getRuntime().availableProcessors()];
-      for (int i = 0; i < activeRecordingThreads.length; i++) {
-        activeRecordingThreads[i] = new AtomicInteger(0);
+      threadRecordCollectLocks = new RecordCollectLock[Runtime.getRuntime().availableProcessors()];
+      for (int i = 0; i < threadRecordCollectLocks.length; i++) {
+        threadRecordCollectLocks[i] = new RecordCollectLock();
       }
     }
 
-    private boolean tryAcquireForRecord() {
-      return forThread().addAndGet(2) % 2 == 0;
-    }
-
-    private void releaseForRecord() {
-      forThread().addAndGet(-2);
-    }
-
-    private void acquireForCollect() {
-      for (int i = 0; i < activeRecordingThreads.length; i++) {
-        activeRecordingThreads[i].addAndGet(1);
-      }
-      for (int i = 0; i < activeRecordingThreads.length; i++) {
-        AtomicInteger val = activeRecordingThreads[i];
-        while (val.get() > 1) {
-          Thread.yield();
-        }
-      }
-    }
-
-    private AtomicInteger forThread() {
-      return activeRecordingThreads[
-          ((int) Thread.currentThread().getId()) % activeRecordingThreads.length];
+    private RecordCollectLock lockForThread() {
+      return threadRecordCollectLocks[
+          ((int) Thread.currentThread().getId()) % threadRecordCollectLocks.length];
     }
   }
+
 }
