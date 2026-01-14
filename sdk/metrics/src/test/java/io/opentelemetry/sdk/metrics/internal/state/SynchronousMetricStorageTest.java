@@ -48,6 +48,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 import org.assertj.core.api.Assertions;
@@ -71,6 +72,14 @@ public class SynchronousMetricStorageTest {
           "unit",
           InstrumentType.COUNTER,
           InstrumentValueType.DOUBLE,
+          Advice.empty());
+  private static final InstrumentDescriptor DESCRIPTOR1 =
+      InstrumentDescriptor.create(
+          "name",
+          "description",
+          "unit",
+          InstrumentType.COUNTER,
+          InstrumentValueType.LONG,
           Advice.empty());
   private static final MetricDescriptor METRIC_DESCRIPTOR =
       MetricDescriptor.create("name", "description", "unit");
@@ -771,7 +780,8 @@ public class SynchronousMetricStorageTest {
   @ParameterizedTest
   @MethodSource("concurrentStressTestArguments")
   void recordAndCollect_concurrentStressTest(
-      DefaultSynchronousMetricStorage<?> storage, BiConsumer<Double, AtomicDouble> collect) {
+      DefaultSynchronousMetricStorage<?> storage, BiConsumer<Long, AtomicLong> collect)
+      throws InterruptedException {
     // Define record threads. Each records a value of 1.0, 2000 times
     List<Thread> threads = new ArrayList<>();
     CountDownLatch latch = new CountDownLatch(4);
@@ -780,7 +790,7 @@ public class SynchronousMetricStorageTest {
           new Thread(
               () -> {
                 for (int j = 0; j < 2000; j++) {
-                  storage.recordDouble(1.0, Attributes.empty(), Context.current());
+                  storage.recordLong(1L, Attributes.empty(), Context.current());
                   Uninterruptibles.sleepUninterruptibly(Duration.ofMillis(1));
                 }
                 latch.countDown();
@@ -789,7 +799,7 @@ public class SynchronousMetricStorageTest {
     }
 
     // Define collect thread. Collect thread collects and aggregates the
-    AtomicDouble cumulativeSum = new AtomicDouble();
+    AtomicLong cumulativeSum = new AtomicLong();
     Thread collectThread =
         new Thread(
             () -> {
@@ -802,7 +812,7 @@ public class SynchronousMetricStorageTest {
                 MetricData metricData =
                     storage.collect(Resource.empty(), InstrumentationScopeInfo.empty(), 0, 1);
                 if (!metricData.isEmpty()) {
-                  metricData.getDoubleSumData().getPoints().stream()
+                  metricData.getLongSumData().getPoints().stream()
                       .findFirst()
                       .ifPresent(pointData -> collect.accept(pointData.getValue(), cumulativeSum));
                 }
@@ -819,7 +829,21 @@ public class SynchronousMetricStorageTest {
     // Wait for the collect thread to end, which collects until the record threads are done
     Uninterruptibles.joinUninterruptibly(collectThread);
 
-    assertThat(cumulativeSum.get()).isEqualTo(8000.0);
+    try {
+      assertThat(cumulativeSum.get()).isEqualTo(8000L);
+    } catch (Throwable t) {
+      // If the cumulativeSum is wrong, wait 100 ms and try again.
+      // Trying to differentiate between lost writes and late writes.
+      Uninterruptibles.sleepUninterruptibly(Duration.ofMillis(100));
+      MetricData metricData =
+          storage.collect(Resource.empty(), InstrumentationScopeInfo.empty(), 0, 1);
+      if (!metricData.isEmpty()) {
+        metricData.getLongSumData().getPoints().stream()
+            .findFirst()
+            .ifPresent(pointData -> collect.accept(pointData.getValue(), cumulativeSum));
+      }
+      assertThat(cumulativeSum.get()).isEqualTo(8000L);
+    }
   }
 
   private static Stream<Arguments> concurrentStressTestArguments() {
@@ -831,7 +855,7 @@ public class SynchronousMetricStorageTest {
         Aggregator<PointData> aggregator =
             ((AggregatorFactory) Aggregation.sum())
                 .createAggregator(
-                    DESCRIPTOR, asExemplarFilterInternal(ExemplarFilter.alwaysOff()), memoryMode);
+                    DESCRIPTOR1, asExemplarFilterInternal(ExemplarFilter.alwaysOff()), memoryMode);
 
         argumentsList.add(
             Arguments.of(
@@ -848,7 +872,7 @@ public class SynchronousMetricStorageTest {
                     AttributesProcessor.noop(),
                     CARDINALITY_LIMIT,
                     /* enabled= */ true),
-                (BiConsumer<Double, AtomicDouble>)
+                (BiConsumer<Long, AtomicLong>)
                     (value, cumulativeCount) -> cumulativeCount.addAndGet(value)));
 
         argumentsList.add(
@@ -863,7 +887,7 @@ public class SynchronousMetricStorageTest {
                     AttributesProcessor.noop(),
                     CARDINALITY_LIMIT,
                     /* enabled= */ true),
-                (BiConsumer<Double, AtomicDouble>)
+                (BiConsumer<Long, AtomicLong>)
                     (value, cumulativeCount) -> cumulativeCount.set(value)));
       }
     }

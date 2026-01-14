@@ -24,6 +24,7 @@ import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarReservoirFactory;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 
 /**
@@ -100,7 +101,7 @@ public final class LongSumAggregator
   }
 
   static final class Handle extends AggregatorHandle<LongPointData> {
-    private final LongAdder current = AdderUtil.createLongAdder();
+    private final AtomicLong current = new AtomicLong();
 
     // Only used if memoryMode == MemoryMode.REUSABLE_DATA
     @Nullable private final MutableLongPointData reusablePointData;
@@ -118,7 +119,7 @@ public final class LongSumAggregator
         Attributes attributes,
         List<LongExemplarData> exemplars,
         boolean reset) {
-      long value = reset ? this.current.sumThenReset() : this.current.sum();
+      long value = reset ? this.current.getAndSet(0) : this.current.get();
       if (reusablePointData != null) {
         reusablePointData.set(startEpochNanos, epochNanos, attributes, value, exemplars);
         return reusablePointData;
@@ -130,7 +131,7 @@ public final class LongSumAggregator
 
     @Override
     public void doRecordLong(long value) {
-      current.add(value);
+      current.addAndGet(value);
     }
   }
 }

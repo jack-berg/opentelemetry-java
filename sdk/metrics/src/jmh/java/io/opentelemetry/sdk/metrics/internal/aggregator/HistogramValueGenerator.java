@@ -55,7 +55,12 @@ public enum HistogramValueGenerator {
 
     @Override
     public double getAsDouble() {
-      return pool[idx.incrementAndGet() % pool.length];
+      int index = idx.incrementAndGet();
+      if (index > pool.length - 1) {
+        index = 0;
+        idx.set(0);
+      }
+      return pool[index];
     }
   }
 
