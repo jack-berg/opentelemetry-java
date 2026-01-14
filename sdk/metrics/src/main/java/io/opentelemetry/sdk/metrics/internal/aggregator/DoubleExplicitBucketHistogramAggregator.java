@@ -74,6 +74,11 @@ public final class DoubleExplicitBucketHistogramAggregator
   }
 
   @Override
+  public boolean requiresRecordCollectLock() {
+    return true;
+  }
+
+  @Override
   public MetricData toMetricData(
       Resource resource,
       InstrumentationScopeInfo instrumentationScopeInfo,
@@ -140,72 +145,62 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      recordCollectLock.awaitReadyToCollect();
-      try {
-        HistogramPointData pointData;
-        long currentCount = 0;
-        for (int i = 0; i < counts.length; i++) {
-          long bucketCount = counts[i].sum();
-          countsArr[i] = bucketCount;
-          currentCount += bucketCount;
-        }
-        if (reusablePoint == null) {
-          pointData =
-              ImmutableHistogramPointData.create(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum.sum(),
-                  currentCount > 0,
-                  this.min.get(),
-                  currentCount > 0,
-                  this.max.get(),
-                  boundaryList,
-                  PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
-                  exemplars);
-        } else /* REUSABLE_DATA */ {
-          pointData =
-              reusablePoint.set(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum.sum(),
-                  currentCount > 0,
-                  this.min.get(),
-                  currentCount > 0,
-                  this.max.get(),
-                  boundaryList,
-                  countsArr,
-                  exemplars);
-        }
-        if (reset) {
-          this.sum.reset();
-          this.min.reset();
-          this.max.reset();
-          for (int i = 0; i < counts.length; i++) {
-            counts[i].reset();
-          }
-          Arrays.fill(this.countsArr, 0);
-        }
-        return pointData;
-      } finally {
-        recordCollectLock.releaseForCollect();
+      HistogramPointData pointData;
+      long currentCount = 0;
+      for (int i = 0; i < counts.length; i++) {
+        long bucketCount = counts[i].sum();
+        countsArr[i] = bucketCount;
+        currentCount += bucketCount;
       }
+      if (reusablePoint == null) {
+        pointData =
+            ImmutableHistogramPointData.create(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                sum.sum(),
+                currentCount > 0,
+                this.min.get(),
+                currentCount > 0,
+                this.max.get(),
+                boundaryList,
+                PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
+                exemplars);
+      } else /* REUSABLE_DATA */ {
+        pointData =
+            reusablePoint.set(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                sum.sum(),
+                currentCount > 0,
+                this.min.get(),
+                currentCount > 0,
+                this.max.get(),
+                boundaryList,
+                countsArr,
+                exemplars);
+      }
+      if (reset) {
+        this.sum.reset();
+        this.min.reset();
+        this.max.reset();
+        for (int i = 0; i < counts.length; i++) {
+          counts[i].reset();
+        }
+        Arrays.fill(this.countsArr, 0);
+      }
+      return pointData;
     }
 
     @Override
     protected void doRecordDouble(double value) {
-      recordCollectLock.awaitReadyToRecord();
-      try {
-        int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-        this.sum.add(value);
-        this.min.accumulate(value);
-        this.max.accumulate(value);
-        this.counts[bucketIndex].increment();
-      } finally {
-        recordCollectLock.releaseForRecord();
-      }
+      this.sum.add(value);
+      this.min.accumulate(value);
+      this.max.accumulate(value);
+      this.counts[bucketIndex].increment();
     }
   }
 }

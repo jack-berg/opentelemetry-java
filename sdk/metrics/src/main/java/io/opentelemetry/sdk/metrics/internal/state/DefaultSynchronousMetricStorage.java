@@ -72,6 +72,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
       new ConcurrentLinkedQueue<>();
 
   private volatile boolean enabled;
+  private final boolean requiredRecordCollectLock;
 
   DefaultSynchronousMetricStorage(
       RegisteredReader registeredReader,
@@ -91,6 +92,9 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     this.maxCardinality = maxCardinality - 1;
     this.memoryMode = registeredReader.getReader().getMemoryMode();
     this.enabled = enabled;
+    this.requiredRecordCollectLock =
+        aggregationTemporality == AggregationTemporality.DELTA
+            || aggregator.requiresRecordCollectLock();
   }
 
   // Visible for testing
@@ -103,7 +107,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     if (!enabled) {
       return;
     }
-    if (aggregationTemporality == AggregationTemporality.DELTA) {
+    if (requiredRecordCollectLock) {
       AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
       try {
         AggregatorHandle<T> handle =
@@ -134,7 +138,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
               + ". Dropping measurement.");
       return;
     }
-    if (aggregationTemporality == AggregationTemporality.DELTA) {
+    if (requiredRecordCollectLock) {
       AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
       try {
         AggregatorHandle<T> handle =
@@ -264,80 +268,85 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     // - The problem is that the AtomicLong used to coordinate between record and collect is under
     // high contention is a bottleneck under high concurrency.
     holder.recordCollectLock.awaitReadyToCollect();
-    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = holder.aggregatorHandles;
+    try {
+      ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles =
+          holder.aggregatorHandles;
 
-    List<T> points;
-    if (memoryMode == REUSABLE_DATA) {
-      reusableResultList.clear();
-      points = reusableResultList;
-    } else {
-      points = new ArrayList<>(aggregatorHandles.size());
-    }
-
-    // In DELTA aggregation temporality each Attributes is reset to 0
-    // every time we perform a collection (by definition of DELTA).
-    // In IMMUTABLE_DATA MemoryMode, this is accomplished by removing all aggregator handles
-    // (into which the values are recorded) effectively starting from 0
-    // for each recorded Attributes.
-    // In REUSABLE_DATA MemoryMode, we strive for zero allocations. Since even removing
-    // a key-value from a map and putting it again on next recording will cost an allocation,
-    // we are keeping the aggregator handles in their map, and only reset their value once
-    // we finish collecting the aggregated value from each one.
-    // The SDK must adhere to keeping no more than maxCardinality unique Attributes in memory,
-    // hence during collect(), when the map is at full capacity, we try to clear away unused
-    // aggregator handles, so on next recording cycle using this map, there will be room for newly
-    // recorded Attributes. This comes at the expanse of memory allocations. This can be avoided
-    // if the user chooses to increase the maxCardinality.
-    if (memoryMode == REUSABLE_DATA) {
-      if (aggregatorHandles.size() >= maxCardinality) {
-        aggregatorHandles.forEach(
-            (attribute, handle) -> {
-              if (!handle.hasRecordedValues()) {
-                aggregatorHandles.remove(attribute);
-              }
-            });
+      List<T> points;
+      if (memoryMode == REUSABLE_DATA) {
+        reusableResultList.clear();
+        points = reusableResultList;
+      } else {
+        points = new ArrayList<>(aggregatorHandles.size());
       }
+
+      // In DELTA aggregation temporality each Attributes is reset to 0
+      // every time we perform a collection (by definition of DELTA).
+      // In IMMUTABLE_DATA MemoryMode, this is accomplished by removing all aggregator handles
+      // (into which the values are recorded) effectively starting from 0
+      // for each recorded Attributes.
+      // In REUSABLE_DATA MemoryMode, we strive for zero allocations. Since even removing
+      // a key-value from a map and putting it again on next recording will cost an allocation,
+      // we are keeping the aggregator handles in their map, and only reset their value once
+      // we finish collecting the aggregated value from each one.
+      // The SDK must adhere to keeping no more than maxCardinality unique Attributes in memory,
+      // hence during collect(), when the map is at full capacity, we try to clear away unused
+      // aggregator handles, so on next recording cycle using this map, there will be room for newly
+      // recorded Attributes. This comes at the expanse of memory allocations. This can be avoided
+      // if the user chooses to increase the maxCardinality.
+      if (memoryMode == REUSABLE_DATA) {
+        if (aggregatorHandles.size() >= maxCardinality) {
+          aggregatorHandles.forEach(
+              (attribute, handle) -> {
+                if (!handle.hasRecordedValues()) {
+                  aggregatorHandles.remove(attribute);
+                }
+              });
+        }
+      }
+
+      // Grab aggregated points.
+      aggregatorHandles.forEach(
+          (attributes, handle) -> {
+            if (!handle.hasRecordedValues()) {
+              return;
+            }
+            T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
+
+            if (memoryMode == IMMUTABLE_DATA) {
+              // Return the aggregator to the pool.
+              // The pool is only used in DELTA temporality (since in CUMULATIVE the handler is
+              // always used as it is the place accumulating the values and never resets)
+              // AND only in IMMUTABLE_DATA memory mode since in REUSABLE_DATA we avoid
+              // using the pool since it allocates memory internally on each put() or remove()
+              aggregatorHandlePool.offer(handle);
+            }
+
+            if (point != null) {
+              points.add(point);
+            }
+          });
+
+      // Trim pool down if needed. pool.size() will only exceed maxCardinality if new handles are
+      // created during collection.
+      int toDelete = aggregatorHandlePool.size() - (maxCardinality + 1);
+      for (int i = 0; i < toDelete; i++) {
+        aggregatorHandlePool.poll();
+      }
+
+      if (memoryMode == REUSABLE_DATA) {
+        previousCollectionAggregatorHandles = aggregatorHandles;
+      }
+
+      if (points.isEmpty() || !enabled) {
+        return EmptyMetricData.getInstance();
+      }
+
+      return aggregator.toMetricData(
+          resource, instrumentationScopeInfo, metricDescriptor, points, aggregationTemporality);
+    } finally {
+      holder.recordCollectLock.releaseForCollect();
     }
-
-    // Grab aggregated points.
-    aggregatorHandles.forEach(
-        (attributes, handle) -> {
-          if (!handle.hasRecordedValues()) {
-            return;
-          }
-          T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
-
-          if (memoryMode == IMMUTABLE_DATA) {
-            // Return the aggregator to the pool.
-            // The pool is only used in DELTA temporality (since in CUMULATIVE the handler is
-            // always used as it is the place accumulating the values and never resets)
-            // AND only in IMMUTABLE_DATA memory mode since in REUSABLE_DATA we avoid
-            // using the pool since it allocates memory internally on each put() or remove()
-            aggregatorHandlePool.offer(handle);
-          }
-
-          if (point != null) {
-            points.add(point);
-          }
-        });
-
-    // Trim pool down if needed. pool.size() will only exceed maxCardinality if new handles are
-    // created during collection.
-    int toDelete = aggregatorHandlePool.size() - (maxCardinality + 1);
-    for (int i = 0; i < toDelete; i++) {
-      aggregatorHandlePool.poll();
-    }
-
-    if (memoryMode == REUSABLE_DATA) {
-      previousCollectionAggregatorHandles = aggregatorHandles;
-    }
-
-    if (points.isEmpty() || !enabled) {
-      return EmptyMetricData.getInstance();
-    }
-
-    return aggregator.toMetricData(
-        resource, instrumentationScopeInfo, metricDescriptor, points, aggregationTemporality);
   }
 
   public MetricData collectCumulative(
@@ -348,43 +357,49 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     boolean reset = false;
     long start = startEpochNanos;
 
+    AggregatorHolder<T> aggregationHolder = this.aggregatorHolder;
     ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles =
-        this.aggregatorHolder.aggregatorHandles;
+        aggregationHolder.aggregatorHandles;
+    aggregationHolder.recordCollectLock.awaitReadyToCollect();
 
-    List<T> points;
-    if (memoryMode == REUSABLE_DATA) {
-      reusableResultList.clear();
-      points = reusableResultList;
-    } else {
-      points = new ArrayList<>(aggregatorHandles.size());
+    try {
+      List<T> points;
+      if (memoryMode == REUSABLE_DATA) {
+        reusableResultList.clear();
+        points = reusableResultList;
+      } else {
+        points = new ArrayList<>(aggregatorHandles.size());
+      }
+
+      // Grab aggregated points.
+      aggregatorHandles.forEach(
+          (attributes, handle) -> {
+            if (!handle.hasRecordedValues()) {
+              return;
+            }
+            T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
+
+            if (point != null) {
+              points.add(point);
+            }
+          });
+
+      // Trim pool down if needed. pool.size() will only exceed maxCardinality if new handles are
+      // created during collection.
+      int toDelete = aggregatorHandlePool.size() - (maxCardinality + 1);
+      for (int i = 0; i < toDelete; i++) {
+        aggregatorHandlePool.poll();
+      }
+
+      if (points.isEmpty() || !enabled) {
+        return EmptyMetricData.getInstance();
+      }
+
+      return aggregator.toMetricData(
+          resource, instrumentationScopeInfo, metricDescriptor, points, aggregationTemporality);
+    } finally {
+      aggregationHolder.recordCollectLock.releaseForCollect();
     }
-
-    // Grab aggregated points.
-    aggregatorHandles.forEach(
-        (attributes, handle) -> {
-          if (!handle.hasRecordedValues()) {
-            return;
-          }
-          T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
-
-          if (point != null) {
-            points.add(point);
-          }
-        });
-
-    // Trim pool down if needed. pool.size() will only exceed maxCardinality if new handles are
-    // created during collection.
-    int toDelete = aggregatorHandlePool.size() - (maxCardinality + 1);
-    for (int i = 0; i < toDelete; i++) {
-      aggregatorHandlePool.poll();
-    }
-
-    if (points.isEmpty() || !enabled) {
-      return EmptyMetricData.getInstance();
-    }
-
-    return aggregator.toMetricData(
-        resource, instrumentationScopeInfo, metricDescriptor, points, aggregationTemporality);
   }
 
   @Override

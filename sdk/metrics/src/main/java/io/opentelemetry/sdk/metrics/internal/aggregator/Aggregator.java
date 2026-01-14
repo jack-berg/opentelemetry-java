@@ -76,6 +76,10 @@ public interface Aggregator<T extends PointData> {
     throw new UnsupportedOperationException("This aggregator does not support toPoint.");
   }
 
+  default boolean requiresRecordCollectLock() {
+    return false;
+  }
+
   /**
    * Returns the {@link MetricData} that this {@code Aggregation} will produce.
    *
