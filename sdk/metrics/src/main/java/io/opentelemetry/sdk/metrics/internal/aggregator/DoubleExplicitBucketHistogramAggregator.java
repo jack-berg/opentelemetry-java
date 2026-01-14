@@ -6,7 +6,6 @@
 package io.opentelemetry.sdk.metrics.internal.aggregator;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.internal.GuardedBy;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.common.export.MemoryMode;
@@ -27,7 +26,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.DoubleAccumulator;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
@@ -140,62 +138,62 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-        HistogramPointData pointData;
-        long currentCount = 0;
-        for (int i = 0; i < counts.length; i++) {
-          long bucketCount = counts[i].sum();
-          countsArr[i] = bucketCount;
-          currentCount += bucketCount;
-        }
-        if (reusablePoint == null) {
-          pointData =
-              ImmutableHistogramPointData.create(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum.sum(),
-                  currentCount > 0,
-                  this.min.get(),
-                  currentCount > 0,
-                  this.max.get(),
-                  boundaryList,
-                  PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
-                  exemplars);
-        } else /* REUSABLE_DATA */ {
-          pointData =
-              reusablePoint.set(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum.sum(),
-                  currentCount > 0,
-                  this.min.get(),
-                  currentCount > 0,
-                  this.max.get(),
-                  boundaryList,
-                  countsArr,
-                  exemplars);
-        }
-        if (reset) {
-          this.sum.reset();
-          this.min.reset();
-          this.max.reset();
-          for (int i = 0; i < counts.length; i++) {
-            counts[i].reset();
-          }
-          Arrays.fill(this.countsArr, 0);
-        }
-        return pointData;
+      HistogramPointData pointData;
+      long currentCount = 0;
+      for (int i = 0; i < counts.length; i++) {
+        long bucketCount = counts[i].sum();
+        countsArr[i] = bucketCount;
+        currentCount += bucketCount;
       }
+      if (reusablePoint == null) {
+        pointData =
+            ImmutableHistogramPointData.create(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                sum.sum(),
+                currentCount > 0,
+                this.min.get(),
+                currentCount > 0,
+                this.max.get(),
+                boundaryList,
+                PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
+                exemplars);
+      } else /* REUSABLE_DATA */ {
+        pointData =
+            reusablePoint.set(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                sum.sum(),
+                currentCount > 0,
+                this.min.get(),
+                currentCount > 0,
+                this.max.get(),
+                boundaryList,
+                countsArr,
+                exemplars);
+      }
+      if (reset) {
+        this.sum.reset();
+        this.min.reset();
+        this.max.reset();
+        for (int i = 0; i < counts.length; i++) {
+          counts[i].reset();
+        }
+        Arrays.fill(this.countsArr, 0);
+      }
+      return pointData;
+    }
 
     @Override
     protected void doRecordDouble(double value) {
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-        this.sum.add(value);
-        this.min.accumulate(value);
-        this.max.accumulate(value);
-        this.counts[bucketIndex].increment();
+      this.sum.add(value);
+      this.min.accumulate(value);
+      this.max.accumulate(value);
+      this.counts[bucketIndex].increment();
     }
   }
 }

@@ -14,7 +14,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.Uninterruptibles;
 import io.github.netmikey.logunit.api.LogCapturer;
 import io.opentelemetry.api.common.AttributeKey;
@@ -863,7 +862,8 @@ public class SynchronousMetricStorageTest {
                 new DefaultSynchronousMetricStorage<>(
                     RegisteredReader.create(
                         InMemoryMetricReader.builder()
-                            .setAggregationTemporalitySelector(unused -> AggregationTemporality.DELTA)
+                            .setAggregationTemporalitySelector(
+                                unused -> AggregationTemporality.DELTA)
                             .setMemoryMode(memoryMode)
                             .build(),
                         ViewRegistry.create()),

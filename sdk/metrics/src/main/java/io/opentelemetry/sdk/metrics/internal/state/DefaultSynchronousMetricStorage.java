@@ -7,7 +7,6 @@ package io.opentelemetry.sdk.metrics.internal.state;
 
 import static io.opentelemetry.sdk.common.export.MemoryMode.IMMUTABLE_DATA;
 import static io.opentelemetry.sdk.common.export.MemoryMode.REUSABLE_DATA;
-import static io.opentelemetry.sdk.metrics.data.AggregationTemporality.DELTA;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.context.Context;
@@ -25,15 +24,12 @@ import io.opentelemetry.sdk.metrics.internal.export.RegisteredReader;
 import io.opentelemetry.sdk.metrics.internal.view.AttributesProcessor;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -258,13 +254,16 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     // - Collect grabs this.aggregatorHolder (1) and updates it to a new value (2)
     // - At this point, all new records go to aggregatorHolder (2)
     // - Any number of record threads could have a reference to (1) and be actively recording
-    // - Collect needs to wait for recording threads to finish or else it has the "lost writes" problem
-    // - The existing solution works because it binds the record and collect operations together, with non-blockig AtomicLong used to coordinate in two direction:
+    // - Collect needs to wait for recording threads to finish or else it has the "lost writes"
+    // problem
+    // - The existing solution works because it binds the record and collect operations together,
+    // with non-blockig AtomicLong used to coordinate in two direction:
     //   1. Collect communicates when it starts collecting by setting an odd number
     //   2. Record communicates when each recording starts / stops by incrementing / decrementing 2
     //   3. After Collect indicates it starts, it waits until all recordings resolve
     //   4. After Collect finishes, it decrements -1, allowing recording to continue
-    // - The problem is that the AtomicLong used to coordinate between record and collect is under high contention is a bottleneck under high concurrency.
+    // - The problem is that the AtomicLong used to coordinate between record and collect is under
+    // high contention is a bottleneck under high concurrency.
     holder.acquireForCollect();
     ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = holder.aggregatorHandles;
 
@@ -350,7 +349,8 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     boolean reset = false;
     long start = startEpochNanos;
 
-    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = this.aggregatorHolder.aggregatorHandles;
+    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles =
+        this.aggregatorHolder.aggregatorHandles;
 
     List<T> points;
     if (memoryMode == REUSABLE_DATA) {
@@ -444,7 +444,8 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     }
 
     private AtomicInteger forThread() {
-      return activeRecordingThreads[((int) Thread.currentThread().getId()) % activeRecordingThreads.length];
+      return activeRecordingThreads[
+          ((int) Thread.currentThread().getId()) % activeRecordingThreads.length];
     }
   }
 }

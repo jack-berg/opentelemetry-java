@@ -14,7 +14,6 @@ import io.opentelemetry.sdk.metrics.internal.exemplar.DoubleExemplarReservoir;
 import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarReservoirFactory;
 import io.opentelemetry.sdk.metrics.internal.exemplar.LongExemplarReservoir;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -41,7 +40,6 @@ public abstract class AggregatorHandle<T extends PointData> {
   @Nullable private final LongExemplarReservoir longReservoirFactory;
   private final boolean isDoubleType;
   private volatile boolean valuesRecorded = false;
-  private final AggregatorLock lock = new AggregatorLock();
 
   protected AggregatorHandle(ExemplarReservoirFactory reservoirFactory, boolean isDoubleType) {
     this.isDoubleType = isDoubleType;
@@ -60,30 +58,25 @@ public abstract class AggregatorHandle<T extends PointData> {
    */
   public final T aggregateThenMaybeReset(
       long startEpochNanos, long epochNanos, Attributes attributes, boolean reset) {
-    lock.acquireForCollect();
-    try {
-      if (reset) {
-        valuesRecorded = false;
-      }
-      if (isDoubleType) {
-        return doAggregateThenMaybeResetDoubles(
-            startEpochNanos,
-            epochNanos,
-            attributes,
-            throwUnsupportedIfNull(this.doubleReservoirFactory, UNSUPPORTED_DOUBLE_MESSAGE)
-                .collectAndResetDoubles(attributes),
-            reset);
-      }
-      return doAggregateThenMaybeResetLongs(
+    if (reset) {
+      valuesRecorded = false;
+    }
+    if (isDoubleType) {
+      return doAggregateThenMaybeResetDoubles(
           startEpochNanos,
           epochNanos,
           attributes,
-          throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
-              .collectAndResetLongs(attributes),
+          throwUnsupportedIfNull(this.doubleReservoirFactory, UNSUPPORTED_DOUBLE_MESSAGE)
+              .collectAndResetDoubles(attributes),
           reset);
-    } finally {
-      lock.releaseAfterCollect();
     }
+    return doAggregateThenMaybeResetLongs(
+        startEpochNanos,
+        epochNanos,
+        attributes,
+        throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
+            .collectAndResetLongs(attributes),
+        reset);
   }
 
   /** Implementation of the {@link #aggregateThenMaybeReset(long, long, Attributes, boolean)} . */
@@ -109,13 +102,8 @@ public abstract class AggregatorHandle<T extends PointData> {
   public void recordLong(long value, Attributes attributes, Context context) {
     throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
         .offerLongMeasurement(value, attributes, context);
-    lock.acquireForRecord();
-    try {
-      doRecordLong(value);
-      valuesRecorded = true;
-    } finally {
-      lock.releaseAfterRecord();
-    }
+    doRecordLong(value);
+    valuesRecorded = true;
   }
 
   /**
@@ -129,13 +117,8 @@ public abstract class AggregatorHandle<T extends PointData> {
   public final void recordDouble(double value, Attributes attributes, Context context) {
     throwUnsupportedIfNull(this.doubleReservoirFactory, UNSUPPORTED_DOUBLE_MESSAGE)
         .offerDoubleMeasurement(value, attributes, context);
-    lock.acquireForRecord();
-    try {
-      doRecordDouble(value);
-      valuesRecorded = true;
-    } finally {
-      lock.releaseAfterRecord();
-    }
+    doRecordDouble(value);
+    valuesRecorded = true;
   }
 
   /**
@@ -160,32 +143,5 @@ public abstract class AggregatorHandle<T extends PointData> {
       throw new UnsupportedOperationException(message);
     }
     return value;
-  }
-
-  private static class AggregatorLock {
-    private final AtomicInteger recordCounter = new AtomicInteger();
-
-    private void acquireForRecord() {
-      while ((recordCounter.addAndGet(2) % 2) != 0) {
-        releaseAfterRecord();
-        Thread.yield();
-      }
-    }
-
-    private void releaseAfterRecord() {
-      recordCounter.addAndGet(-2);
-    }
-
-    private void acquireForCollect() {
-      int count = recordCounter.addAndGet(1);
-      while (count > 1) {
-        Thread.yield();
-        count = recordCounter.get();
-      }
-    }
-
-    private void releaseAfterCollect() {
-      recordCounter.addAndGet(-1);
-    }
   }
 }
