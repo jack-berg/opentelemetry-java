@@ -115,14 +115,9 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
         releaseHolderForRecord(aggregatorHolder);
       }
     } else {
-      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
-      try {
-        AggregatorHandle<T> handle =
-            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
-        handle.recordLong(value, attributes, context);
-      } finally {
-        releaseHolderForRecord(aggregatorHolder);
-      }
+      AggregatorHandle<T> handle =
+          getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+      handle.recordLong(value, attributes, context);
     }
   }
 
@@ -151,14 +146,9 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
         releaseHolderForRecord(aggregatorHolder);
       }
     } else {
-      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
-      try {
-        AggregatorHandle<T> handle =
-            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
-        handle.recordDouble(value, attributes, context);
-      } finally {
-        releaseHolderForRecord(aggregatorHolder);
-      }
+      AggregatorHandle<T> handle =
+          getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+      handle.recordDouble(value, attributes, context);
     }
   }
 
