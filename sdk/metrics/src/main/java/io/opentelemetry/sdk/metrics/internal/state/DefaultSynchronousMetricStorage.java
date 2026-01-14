@@ -105,13 +105,24 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     if (!enabled) {
       return;
     }
-    AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
-    try {
-      AggregatorHandle<T> handle =
-          getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
-      handle.recordLong(value, attributes, context);
-    } finally {
-      releaseHolderForRecord(aggregatorHolder);
+    if (aggregationTemporality == AggregationTemporality.DELTA) {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordLong(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
+    } else {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordLong(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
     }
   }
 
@@ -130,13 +141,24 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
               + ". Dropping measurement.");
       return;
     }
-    AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
-    try {
-      AggregatorHandle<T> handle =
-          getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
-      handle.recordDouble(value, attributes, context);
-    } finally {
-      releaseHolderForRecord(aggregatorHolder);
+    if (aggregationTemporality == AggregationTemporality.DELTA) {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordDouble(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
+    } else {
+      AggregatorHolder<T> aggregatorHolder = getHolderForRecord();
+      try {
+        AggregatorHandle<T> handle =
+            getAggregatorHandle(aggregatorHolder.aggregatorHandles, attributes, context);
+        handle.recordDouble(value, attributes, context);
+      } finally {
+        releaseHolderForRecord(aggregatorHolder);
+      }
     }
   }
 
@@ -220,32 +242,37 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
       InstrumentationScopeInfo instrumentationScopeInfo,
       long startEpochNanos,
       long epochNanos) {
-    boolean reset = aggregationTemporality == DELTA;
-    long start =
-        aggregationTemporality == DELTA
-            ? registeredReader.getLastCollectEpochNanos()
-            : startEpochNanos;
-
-    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles;
-    if (reset) {
-      AggregatorHolder<T> holder = this.aggregatorHolder;
-      this.aggregatorHolder =
-          (memoryMode == REUSABLE_DATA)
-              ? new AggregatorHolder<>(previousCollectionAggregatorHandles)
-              : new AggregatorHolder<>();
-
-      // Increment recordsInProgress by 1, which produces an odd number acting as a signal that
-      // record operations should re-read the volatile this.aggregatorHolder.
-      // Repeatedly grab recordsInProgress until it is <= 1, which signals all active record
-      // operations are complete.
-      int recordsInProgress = holder.activeRecordingThreads.addAndGet(1);
-      while (recordsInProgress > 1) {
-        recordsInProgress = holder.activeRecordingThreads.get();
-      }
-      aggregatorHandles = holder.aggregatorHandles;
+    if (aggregationTemporality == AggregationTemporality.DELTA) {
+      return collectDelta(resource, instrumentationScopeInfo, startEpochNanos, epochNanos);
     } else {
-      aggregatorHandles = this.aggregatorHolder.aggregatorHandles;
+      return collectCumulative(resource, instrumentationScopeInfo, startEpochNanos, epochNanos);
     }
+  }
+
+  public MetricData collectDelta(
+      Resource resource,
+      InstrumentationScopeInfo instrumentationScopeInfo,
+      long startEpochNanos,
+      long epochNanos) {
+    boolean reset = true;
+    long start = registeredReader.getLastCollectEpochNanos();
+
+    ;
+    AggregatorHolder<T> holder = this.aggregatorHolder;
+    this.aggregatorHolder =
+        (memoryMode == REUSABLE_DATA)
+            ? new AggregatorHolder<>(previousCollectionAggregatorHandles)
+            : new AggregatorHolder<>();
+
+    // Increment recordsInProgress by 1, which produces an odd number acting as a signal that
+    // record operations should re-read the volatile this.aggregatorHolder.
+    // Repeatedly grab recordsInProgress until it is <= 1, which signals all active record
+    // operations are complete.
+    int recordsInProgress = holder.activeRecordingThreads.addAndGet(1);
+    while (recordsInProgress > 1) {
+      recordsInProgress = holder.activeRecordingThreads.get();
+    }
+    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = holder.aggregatorHandles;
 
     List<T> points;
     if (memoryMode == REUSABLE_DATA) {
@@ -269,7 +296,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
     // aggregator handles, so on next recording cycle using this map, there will be room for newly
     // recorded Attributes. This comes at the expanse of memory allocations. This can be avoided
     // if the user chooses to increase the maxCardinality.
-    if (memoryMode == REUSABLE_DATA && reset) {
+    if (memoryMode == REUSABLE_DATA) {
       if (aggregatorHandles.size() >= maxCardinality) {
         aggregatorHandles.forEach(
             (attribute, handle) -> {
@@ -288,7 +315,7 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
           }
           T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
 
-          if (reset && memoryMode == IMMUTABLE_DATA) {
+          if (memoryMode == IMMUTABLE_DATA) {
             // Return the aggregator to the pool.
             // The pool is only used in DELTA temporality (since in CUMULATIVE the handler is
             // always used as it is the place accumulating the values and never resets)
@@ -309,8 +336,54 @@ public final class DefaultSynchronousMetricStorage<T extends PointData>
       aggregatorHandlePool.poll();
     }
 
-    if (reset && memoryMode == REUSABLE_DATA) {
+    if (memoryMode == REUSABLE_DATA) {
       previousCollectionAggregatorHandles = aggregatorHandles;
+    }
+
+    if (points.isEmpty() || !enabled) {
+      return EmptyMetricData.getInstance();
+    }
+
+    return aggregator.toMetricData(
+        resource, instrumentationScopeInfo, metricDescriptor, points, aggregationTemporality);
+  }
+
+  public MetricData collectCumulative(
+      Resource resource,
+      InstrumentationScopeInfo instrumentationScopeInfo,
+      long startEpochNanos,
+      long epochNanos) {
+    boolean reset = false;
+    long start = startEpochNanos;
+
+    ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles = this.aggregatorHolder.aggregatorHandles;
+
+    List<T> points;
+    if (memoryMode == REUSABLE_DATA) {
+      reusableResultList.clear();
+      points = reusableResultList;
+    } else {
+      points = new ArrayList<>(aggregatorHandles.size());
+    }
+
+    // Grab aggregated points.
+    aggregatorHandles.forEach(
+        (attributes, handle) -> {
+          if (!handle.hasRecordedValues()) {
+            return;
+          }
+          T point = handle.aggregateThenMaybeReset(start, epochNanos, attributes, reset);
+
+          if (point != null) {
+            points.add(point);
+          }
+        });
+
+    // Trim pool down if needed. pool.size() will only exceed maxCardinality if new handles are
+    // created during collection.
+    int toDelete = aggregatorHandlePool.size() - (maxCardinality + 1);
+    for (int i = 0; i < toDelete; i++) {
+      aggregatorHandlePool.poll();
     }
 
     if (points.isEmpty() || !enabled) {
