@@ -20,6 +20,7 @@ import io.opentelemetry.sdk.metrics.internal.data.ImmutableMetricData;
 import io.opentelemetry.sdk.metrics.internal.data.MutableHistogramPointData;
 import io.opentelemetry.sdk.metrics.internal.descriptor.MetricDescriptor;
 import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarReservoirFactory;
+import io.opentelemetry.sdk.metrics.internal.state.RecordCollectLock;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -99,6 +100,7 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final DoubleAccumulator max = new DoubleAccumulator(Math::max, -1);
     private final java.util.concurrent.atomic.LongAdder[] counts;
     private final long[] countsArr;
+    private final RecordCollectLock recordCollectLock = new RecordCollectLock();
 
     // Used only when MemoryMode = REUSABLE_DATA
     @Nullable private final MutableHistogramPointData reusablePoint;
@@ -138,63 +140,72 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      // TODO: if the cumulative path isn't going to provide concurrency controls, then this code needs adjustment to avoid partial writes.
-      HistogramPointData pointData;
-      long currentCount = 0;
-      for (int i = 0; i < counts.length; i++) {
-        long bucketCount = counts[i].sum();
-        countsArr[i] = bucketCount;
-        currentCount += bucketCount;
-      }
-      if (reusablePoint == null) {
-        pointData =
-            ImmutableHistogramPointData.create(
-                startEpochNanos,
-                epochNanos,
-                attributes,
-                sum.sum(),
-                currentCount > 0,
-                this.min.get(),
-                currentCount > 0,
-                this.max.get(),
-                boundaryList,
-                PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
-                exemplars);
-      } else /* REUSABLE_DATA */ {
-        pointData =
-            reusablePoint.set(
-                startEpochNanos,
-                epochNanos,
-                attributes,
-                sum.sum(),
-                currentCount > 0,
-                this.min.get(),
-                currentCount > 0,
-                this.max.get(),
-                boundaryList,
-                countsArr,
-                exemplars);
-      }
-      if (reset) {
-        this.sum.reset();
-        this.min.reset();
-        this.max.reset();
+      recordCollectLock.awaitReadyToCollect();
+      try {
+        HistogramPointData pointData;
+        long currentCount = 0;
         for (int i = 0; i < counts.length; i++) {
-          counts[i].reset();
+          long bucketCount = counts[i].sum();
+          countsArr[i] = bucketCount;
+          currentCount += bucketCount;
         }
-        Arrays.fill(this.countsArr, 0);
+        if (reusablePoint == null) {
+          pointData =
+              ImmutableHistogramPointData.create(
+                  startEpochNanos,
+                  epochNanos,
+                  attributes,
+                  sum.sum(),
+                  currentCount > 0,
+                  this.min.get(),
+                  currentCount > 0,
+                  this.max.get(),
+                  boundaryList,
+                  PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
+                  exemplars);
+        } else /* REUSABLE_DATA */ {
+          pointData =
+              reusablePoint.set(
+                  startEpochNanos,
+                  epochNanos,
+                  attributes,
+                  sum.sum(),
+                  currentCount > 0,
+                  this.min.get(),
+                  currentCount > 0,
+                  this.max.get(),
+                  boundaryList,
+                  countsArr,
+                  exemplars);
+        }
+        if (reset) {
+          this.sum.reset();
+          this.min.reset();
+          this.max.reset();
+          for (int i = 0; i < counts.length; i++) {
+            counts[i].reset();
+          }
+          Arrays.fill(this.countsArr, 0);
+        }
+        return pointData;
+      } finally {
+        recordCollectLock.releaseForCollect();
       }
-      return pointData;
     }
 
     @Override
     protected void doRecordDouble(double value) {
-      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+      recordCollectLock.awaitReadyToRecord();
+      try {
+        int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-      this.sum.add(value);
-      this.min.accumulate(value);
-      this.max.accumulate(value);
-      this.counts[bucketIndex].increment();
+        this.sum.add(value);
+        this.min.accumulate(value);
+        this.max.accumulate(value);
+        this.counts[bucketIndex].increment();
+      } finally {
+        recordCollectLock.releaseForRecord();
+      }
     }
   }
 }
