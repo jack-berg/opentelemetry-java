@@ -76,7 +76,7 @@ public interface Aggregator<T extends PointData> {
     throw new UnsupportedOperationException("This aggregator does not support toPoint.");
   }
 
-  default boolean requiresSynchronization() {
+  default boolean requiresRecordCollectLock() {
     return false;
   }
 
