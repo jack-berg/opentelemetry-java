@@ -154,7 +154,9 @@ public final class DoubleExplicitBucketHistogramAggregator
           min = Math.min(min, cell.min);
           max = Math.max(max, cell.max);
           for (int i = 0; i < cell.counts.length; i++) {
-            countsArr[i] += cell.counts[i];
+            long currentCellCount = cell.counts[i];
+            count += currentCellCount;
+            countsArr[i] += currentCellCount;
           }
           if (reset) {
             cell.sum = 0;
