@@ -20,16 +20,13 @@ import io.opentelemetry.sdk.metrics.internal.data.ImmutableMetricData;
 import io.opentelemetry.sdk.metrics.internal.data.MutableHistogramPointData;
 import io.opentelemetry.sdk.metrics.internal.descriptor.MetricDescriptor;
 import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarReservoirFactory;
-import io.opentelemetry.sdk.metrics.internal.state.RecordCollectLock;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.DoubleAccumulator;
-import java.util.concurrent.atomic.DoubleAdder;
-import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.Nullable;
 
 /**
@@ -100,12 +97,8 @@ public final class DoubleExplicitBucketHistogramAggregator
     // read-only
     private final double[] boundaries;
 
-    private final DoubleAdder sum = new DoubleAdder();
-    private final DoubleAccumulator min = new DoubleAccumulator(Math::min, Double.MAX_VALUE);
-    private final DoubleAccumulator max = new DoubleAccumulator(Math::max, -1);
-    private final java.util.concurrent.atomic.LongAdder[] counts;
+    private final Cell[] cells;
     private final long[] countsArr;
-    private final RecordCollectLock recordCollectLock = new RecordCollectLock();
 
     // Used only when MemoryMode = REUSABLE_DATA
     @Nullable private final MutableHistogramPointData reusablePoint;
@@ -118,13 +111,13 @@ public final class DoubleExplicitBucketHistogramAggregator
       super(reservoirFactory, /* isDoubleType= */ true);
       this.boundaryList = boundaryList;
       this.boundaries = boundaries;
-      this.counts = new java.util.concurrent.atomic.LongAdder[this.boundaries.length + 1];
-      this.countsArr = new long[this.boundaries.length + 1];
-      for (int i = 0; i < counts.length; i++) {
-        counts[i] = new LongAdder();
+      this.cells = new Cell[Runtime.getRuntime().availableProcessors()];
+      for (int i = 0; i < cells.length; i++) {
+        cells[i] = new Cell(boundaries.length + 1);
       }
+      this.countsArr = new long[boundaries.length + 1];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
-        this.reusablePoint = new MutableHistogramPointData(counts.length);
+        this.reusablePoint = new MutableHistogramPointData(countsArr.length);
       } else {
         this.reusablePoint = null;
       }
@@ -145,62 +138,94 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      HistogramPointData pointData;
-      long currentCount = 0;
-      for (int i = 0; i < counts.length; i++) {
-        long bucketCount = counts[i].sum();
-        countsArr[i] = bucketCount;
-        currentCount += bucketCount;
+      for (Cell cell : cells) {
+        cell.lock.lock();
       }
-      if (reusablePoint == null) {
-        pointData =
-            ImmutableHistogramPointData.create(
-                startEpochNanos,
-                epochNanos,
-                attributes,
-                sum.sum(),
-                currentCount > 0,
-                this.min.get(),
-                currentCount > 0,
-                this.max.get(),
-                boundaryList,
-                PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
-                exemplars);
-      } else /* REUSABLE_DATA */ {
-        pointData =
-            reusablePoint.set(
-                startEpochNanos,
-                epochNanos,
-                attributes,
-                sum.sum(),
-                currentCount > 0,
-                this.min.get(),
-                currentCount > 0,
-                this.max.get(),
-                boundaryList,
-                countsArr,
-                exemplars);
-      }
-      if (reset) {
-        this.sum.reset();
-        this.min.reset();
-        this.max.reset();
-        for (int i = 0; i < counts.length; i++) {
-          counts[i].reset();
+      try {
+        HistogramPointData pointData;
+        Arrays.fill(countsArr, 0);
+        double sum = 0;
+        long count = 0;
+        double min = Double.MAX_VALUE;
+        double max = -1;
+
+        for (Cell cell : cells) {
+          sum += cell.sum;
+          min = Math.min(min, cell.min);
+          max = Math.max(max, cell.max);
+          for (int i = 0; i < cell.counts.length; i++) {
+            countsArr[i] += cell.counts[i];
+          }
+          if (reset) {
+            cell.sum = 0;
+            cell.min = Double.MAX_VALUE;
+            cell.max = -1;
+            Arrays.fill(cell.counts, 0);
+          }
         }
-        Arrays.fill(this.countsArr, 0);
+        if (reusablePoint == null) {
+          pointData =
+              ImmutableHistogramPointData.create(
+                  startEpochNanos,
+                  epochNanos,
+                  attributes,
+                  sum,
+                  count > 0,
+                  min,
+                  count > 0,
+                  max,
+                  boundaryList,
+                  PrimitiveLongList.wrap(Arrays.copyOf(countsArr, countsArr.length)),
+                  exemplars);
+        } else /* REUSABLE_DATA */ {
+          pointData =
+              reusablePoint.set(
+                  startEpochNanos,
+                  epochNanos,
+                  attributes,
+                  sum,
+                  count > 0,
+                  min,
+                  count > 0,
+                  max,
+                  boundaryList,
+                  countsArr,
+                  exemplars);
+        }
+        return pointData;
+      } finally {
+        for (Cell cell : cells) {
+          cell.lock.unlock();
+        }
       }
-      return pointData;
     }
 
     @Override
     protected void doRecordDouble(double value) {
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-      this.sum.add(value);
-      this.min.accumulate(value);
-      this.max.accumulate(value);
-      this.counts[bucketIndex].increment();
+      Cell cell = cells[((int) Thread.currentThread().getId()) % cells.length];
+      cell.lock.lock();
+      try {
+        cell.sum += value;
+        cell.min = Math.min(cell.min, value);
+        cell.max = Math.max(cell.max, value);
+        cell.counts[bucketIndex]++;
+      } finally {
+        cell.lock.unlock();
+      }
+    }
+
+    private static class Cell {
+      private final ReentrantLock lock = new ReentrantLock();
+      private final long[] counts;
+      private double sum = 0;
+      private double min = Double.MAX_VALUE;
+      private double max = -1;
+
+      private Cell(int buckets) {
+        this.counts = new long[buckets];
+      }
     }
   }
 }

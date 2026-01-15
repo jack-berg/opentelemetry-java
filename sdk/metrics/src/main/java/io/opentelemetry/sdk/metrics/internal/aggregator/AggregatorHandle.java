@@ -138,10 +138,6 @@ public abstract class AggregatorHandle<T extends PointData> {
     return valuesRecorded;
   }
 
-  public boolean requiresRecordCollectLock() {
-    return false;
-  }
-
   private static <S> S throwUnsupportedIfNull(@Nullable S value, String message) {
     if (value == null) {
       throw new UnsupportedOperationException(message);
