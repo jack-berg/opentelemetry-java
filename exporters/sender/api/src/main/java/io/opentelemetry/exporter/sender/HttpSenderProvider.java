@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.exporter.http;
+package io.opentelemetry.exporter.sender;
 
 /**
  * A service provider interface (SPI) for providing {@link HttpSender}s backed by different HTTP

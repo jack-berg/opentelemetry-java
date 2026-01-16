@@ -19,6 +19,7 @@ import javax.annotation.Nullable;
  * @since 1.28.0
  */
 @AutoValue
+// TODO: deprecate and move to opentelemetry-exporter-sender-api
 public abstract class RetryPolicy {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 5;

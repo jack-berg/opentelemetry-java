@@ -5,8 +5,8 @@
 
 package io.opentelemetry.exporter.internal;
 
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.http.HttpResponse;
+import io.opentelemetry.exporter.sender.GrpcResponse;
+import io.opentelemetry.exporter.sender.HttpResponse;
 import javax.annotation.Nullable;
 
 /**

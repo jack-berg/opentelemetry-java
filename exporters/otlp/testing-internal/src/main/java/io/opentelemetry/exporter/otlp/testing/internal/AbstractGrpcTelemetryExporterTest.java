@@ -31,12 +31,12 @@ import io.grpc.Decompressor;
 import io.grpc.DecompressorRegistry;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
 import io.opentelemetry.exporter.internal.FailedExportException;
 import io.opentelemetry.exporter.internal.TlsUtil;
 import io.opentelemetry.exporter.internal.grpc.GrpcExporter;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
+import io.opentelemetry.exporter.sender.GrpcResponse;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse;
@@ -929,7 +929,7 @@ public abstract class AbstractGrpcTelemetryExporterTest<T, U extends Message> {
       assertThat(classLoaderSpy.getResourcesNames)
           .isEqualTo(
               Collections.singletonList(
-                  "META-INF/services/io.opentelemetry.exporter.grpc.GrpcSenderProvider"));
+                  "META-INF/services/io.opentelemetry.exporter.sender.GrpcSenderProvider"));
     }
   }
 

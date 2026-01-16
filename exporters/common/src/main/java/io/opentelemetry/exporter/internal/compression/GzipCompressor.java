@@ -5,7 +5,7 @@
 
 package io.opentelemetry.exporter.internal.compression;
 
-import io.opentelemetry.exporter.compressor.Compressor;
+import io.opentelemetry.exporter.sender.Compressor;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.zip.GZIPOutputStream;

@@ -10,12 +10,12 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.internal.ConfigUtil;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.common.ComponentLoader;
-import io.opentelemetry.exporter.compressor.Compressor;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcSenderProvider;
 import io.opentelemetry.exporter.internal.ExporterBuilderUtil;
 import io.opentelemetry.exporter.internal.TlsConfigHelper;
 import io.opentelemetry.exporter.internal.compression.CompressorUtil;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.GrpcSender;
+import io.opentelemetry.exporter.sender.GrpcSenderProvider;
 import io.opentelemetry.sdk.common.InternalTelemetryVersion;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import io.opentelemetry.sdk.internal.ComponentId;
@@ -51,7 +51,7 @@ public class GrpcExporterBuilder {
   private static final Logger LOGGER = Logger.getLogger(GrpcExporterBuilder.class.getName());
   private static final String OLD_SPI_PROPERTY =
       "io.opentelemetry.exporter.internal.grpc.GrpcSenderProvider";
-  private static final String SPI_PROPERTY = "io.opentelemetry.exporter.grpc.GrpcSenderProvider";
+  private static final String SPI_PROPERTY = "io.opentelemetry.exporter.sender.GrpcSenderProvider";
 
   private final StandardComponentId.ExporterType exporterType;
   private final String fullMethodName;
@@ -294,8 +294,9 @@ public class GrpcExporterBuilder {
    * <p>If multiple are available and..
    *
    * <ul>
-   *   <li>{@code io.opentelemetry.exporter.grpc.GrpcSenderProvider} is empty, use the first found.
-   *   <li>{@code io.opentelemetry.exporter.grpc.GrpcSenderProvider} is set, use the matching
+   *   <li>{@code io.opentelemetry.exporter.sender.GrpcSenderProvider} is empty, use the first
+   *       found.
+   *   <li>{@code io.opentelemetry.exporter.sender.GrpcSenderProvider} is set, use the matching
    *       provider. If none match, throw {@link IllegalStateException}.
    * </ul>
    */

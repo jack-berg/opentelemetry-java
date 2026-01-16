@@ -51,6 +51,7 @@ if (javaVersion >= JavaVersion.VERSION_1_9) {
 val versions: Map<String, String> by project
 dependencies {
   api(project(":api:all"))
+  api(project(":exporters:sender:api"))
   api(project(":sdk-extensions:autoconfigure-spi"))
 
   compileOnly(project(":api:incubator"))

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.exporter.grpc;
+package io.opentelemetry.exporter.sender;
 
 /**
  * gRPC status codes. See <a href="https://grpc.io/docs/guides/status-codes/">official grpc.io

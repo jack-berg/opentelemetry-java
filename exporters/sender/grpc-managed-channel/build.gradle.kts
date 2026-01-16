@@ -9,8 +9,7 @@ description = "OpenTelemetry gRPC Upstream Sender"
 otelJava.moduleName.set("io.opentelemetry.exporter.sender.grpc.managedchannel.internal")
 
 dependencies {
-  implementation(project(":exporters:common"))
-  implementation(project(":sdk:common"))
+  implementation(project(":exporters:sender:api"))
 
   implementation("io.grpc:grpc-stub")
 }

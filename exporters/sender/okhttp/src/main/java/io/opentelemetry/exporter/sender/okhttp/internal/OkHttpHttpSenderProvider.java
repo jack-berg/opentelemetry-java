@@ -5,9 +5,9 @@
 
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
-import io.opentelemetry.exporter.http.HttpSender;
-import io.opentelemetry.exporter.http.HttpSenderConfig;
-import io.opentelemetry.exporter.http.HttpSenderProvider;
+import io.opentelemetry.exporter.sender.HttpSender;
+import io.opentelemetry.exporter.sender.HttpSenderConfig;
+import io.opentelemetry.exporter.sender.HttpSenderProvider;
 
 /**
  * {@link HttpSender} SPI implementation for {@link OkHttpHttpSender}.

@@ -5,17 +5,17 @@
 
 package io.opentelemetry.exporter.internal.grpc;
 
-import static io.opentelemetry.exporter.grpc.GrpcStatusCode.UNAVAILABLE;
+import static io.opentelemetry.exporter.sender.GrpcStatusCode.UNAVAILABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
+import io.opentelemetry.exporter.sender.GrpcResponse;
+import io.opentelemetry.exporter.sender.GrpcSender;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.sdk.common.InternalTelemetryVersion;
 import io.opentelemetry.sdk.internal.ComponentId;
@@ -120,8 +120,7 @@ class GrpcExporterTest {
                                                     pa.hasAttributes(expectedAttributes)
                                                         .hasValue(42))));
 
-                onResponse.accept(
-                    ImmutableGrpcResponse.create(GrpcStatusCode.OK, null, new byte[0]));
+                onResponse.accept(new FakeGrpcResponse(GrpcStatusCode.OK));
 
                 return null;
               })
@@ -133,7 +132,7 @@ class GrpcExporterTest {
       doAnswer(
               invoc -> {
                 Consumer<GrpcResponse> onResponse = invoc.getArgument(1);
-                onResponse.accept(ImmutableGrpcResponse.create(UNAVAILABLE, null, new byte[0]));
+                onResponse.accept(new FakeGrpcResponse(UNAVAILABLE));
 
                 return null;
               })
@@ -220,6 +219,30 @@ class GrpcExporterTest {
                                                       "java.io.IOException")
                                                   .build())
                                           .hasBucketCounts(1))));
+    }
+  }
+
+  private static class FakeGrpcResponse implements GrpcResponse {
+
+    final GrpcStatusCode statusCode;
+
+    FakeGrpcResponse(GrpcStatusCode statusCode) {
+      this.statusCode = statusCode;
+    }
+
+    @Override
+    public GrpcStatusCode getStatusCode() {
+      return statusCode;
+    }
+
+    @Override
+    public String getStatusDescription() {
+      return String.valueOf(statusCode.getValue());
+    }
+
+    @Override
+    public byte[] getResponseMessage() {
+      return new byte[0];
     }
   }
 }

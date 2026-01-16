@@ -6,11 +6,11 @@
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
 import io.opentelemetry.api.internal.InstrumentationUtil;
-import io.opentelemetry.exporter.compressor.Compressor;
-import io.opentelemetry.exporter.http.HttpResponse;
-import io.opentelemetry.exporter.http.HttpSender;
-import io.opentelemetry.exporter.internal.RetryUtil;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.HttpResponse;
+import io.opentelemetry.exporter.sender.HttpSender;
+import io.opentelemetry.exporter.sender.MessageWriter;
+import io.opentelemetry.exporter.sender.internal.RetryUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.ProxyOptions;
 import io.opentelemetry.sdk.common.export.RetryPolicy;

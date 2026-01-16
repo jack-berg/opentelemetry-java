@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package io.opentelemetry.exporter.internal.grpc;
+package io.opentelemetry.exporter.sender.grpc.managedchannel.internal;
 
 import com.google.common.io.ByteStreams;
 import io.grpc.Drainable;
@@ -41,13 +41,13 @@ import javax.annotation.Nullable;
  */
 // Adapted from gRPC ProtoInputStream but using our Marshaller
 // https://github.com/grpc/grpc-java/blob/2c2ebaebd5a93acec92fbd2708faac582db99371/protobuf-lite/src/main/java/io/grpc/protobuf/lite/ProtoInputStream.java
-public final class MarshalerInputStream extends InputStream implements Drainable, KnownLength {
+final class MarshalerInputStream extends InputStream implements Drainable, KnownLength {
 
   @Nullable private MessageWriter message;
   @Nullable private ByteArrayInputStream partial;
 
   /** Creates a new {@link MarshalerInputStream}. */
-  public MarshalerInputStream(MessageWriter message) {
+  MarshalerInputStream(MessageWriter message) {
     this.message = message;
   }
 

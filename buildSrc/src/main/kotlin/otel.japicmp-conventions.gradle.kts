@@ -4,6 +4,7 @@ import japicmp.model.*
 import me.champeau.gradle.japicmp.JapicmpTask
 import me.champeau.gradle.japicmp.report.Violation
 import me.champeau.gradle.japicmp.report.stdrules.*
+import org.gradle.internal.resolve.ModuleVersionNotFoundException
 
 
 plugins {
@@ -80,15 +81,20 @@ fun getOldClassPath(version: String): List<File> {
   val existingGroup = group
   group = "virtual_group"
   try {
-    return getAllPublishedModules().map {
+    return getAllPublishedModules().mapNotNull {
       val depModule = "io.opentelemetry:${it.base.archivesName.get()}:$version@jar"
       val depJar = "${it.base.archivesName.get()}-$version.jar"
-      val configuration: Configuration = configurations.detachedConfiguration(
-        dependencies.create(depModule),
-      )
-      files(configuration.files).filter { file ->
-        file.name.equals(depJar)
-      }.singleFile
+      try {
+        val configuration: Configuration = configurations.detachedConfiguration(
+          dependencies.create(depModule),
+        )
+        files(configuration.files).filter { file ->
+          file.name.equals(depJar)
+        }.singleFile
+      } catch (e: Exception) {
+        println("Failed to resolve dependency $depModule. This can be safely ignored if this is module has not yet been published")
+        null
+      }
     }.toList()
   } finally {
     group = existingGroup
@@ -128,12 +134,16 @@ if (!project.hasProperty("otel.release") && !project.name.startsWith("bom")) {
         val newClassPath = getNewClassPath()
         val oldClassPath = getOldClassPath(baselineVersion)
         val pattern = (archiveName + "-([0-9\\.]*)(-SNAPSHOT)?.jar").toRegex()
-        val newArchive = newClassPath.singleOrNull { it.name.matches(pattern) }
+        val newArchive = newClassPath.single { it.name.matches(pattern) }
         val oldArchive = oldClassPath.singleOrNull { it.name.matches(pattern) }
         newClasspath.from(newClassPath)
         oldClasspath.from(oldClassPath)
         newArchives.from(newArchive)
-        oldArchives.from(oldArchive)
+        if (oldArchive != null) {
+          oldArchives.from(oldArchive)
+        } else {
+          enabled = false
+        }
 
         // Only generate API diff for changes.
         onlyModified.set(true)
@@ -157,7 +167,9 @@ if (!project.hasProperty("otel.release") && !project.name.startsWith("bom")) {
           addRule(JApiChangeStatus.MODIFIED, SourceCompatibleRule::class.java)
           addRule(JApiChangeStatus.UNCHANGED, UnchangedMemberRule::class.java)
           // Allow new abstract methods on autovalue
-          addRule(AllowNewAbstractMethodOnAutovalueClasses::class.java)
+          if (oldArchive != null) {
+            addRule(AllowNewAbstractMethodOnAutovalueClasses::class.java)
+          }
           addRule(BinaryIncompatibleRule::class.java)
           // Disallow source incompatible changes, which are allowed by default for some reason
           addRule(SourceIncompatibleRule::class.java)

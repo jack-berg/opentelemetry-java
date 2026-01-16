@@ -19,6 +19,7 @@ import java.util.List;
  *
  * @since 1.36.0
  */
+// TODO: deprecate and move to opentelemetry-exporter-sender-api
 public final class ProxyOptions {
   private final ProxySelector proxySelector;
 

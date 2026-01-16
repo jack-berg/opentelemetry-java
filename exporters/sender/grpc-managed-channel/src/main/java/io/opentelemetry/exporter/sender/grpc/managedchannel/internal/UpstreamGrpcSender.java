@@ -21,12 +21,10 @@ import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ClientCalls;
 import io.grpc.stub.MetadataUtils;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
-import io.opentelemetry.exporter.internal.grpc.ImmutableGrpcResponse;
-import io.opentelemetry.exporter.internal.grpc.MarshalerInputStream;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.GrpcResponse;
+import io.opentelemetry.exporter.sender.GrpcSender;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
+import io.opentelemetry.exporter.sender.MessageWriter;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.io.IOException;
 import java.io.InputStream;
@@ -86,7 +84,7 @@ public final class UpstreamGrpcSender implements GrpcSender {
   public UpstreamGrpcSender(
       ManagedChannel channel,
       String fullMethodName,
-      @Nullable io.opentelemetry.exporter.compressor.Compressor compressor,
+      @Nullable io.opentelemetry.exporter.sender.Compressor compressor,
       boolean shutdownChannel,
       Duration timeout,
       Supplier<Map<String, List<String>>> headersSupplier,
@@ -159,10 +157,23 @@ public final class UpstreamGrpcSender implements GrpcSender {
           @Override
           public void onSuccess(@Nullable byte[] result) {
             onResponse.accept(
-                ImmutableGrpcResponse.create(
-                    GrpcStatusCode.OK,
-                    Status.OK.getDescription(),
-                    result == null ? new byte[0] : result));
+                new GrpcResponse() {
+                  @Override
+                  public GrpcStatusCode getStatusCode() {
+                    return GrpcStatusCode.OK;
+                  }
+
+                  @Nullable
+                  @Override
+                  public String getStatusDescription() {
+                    return Status.OK.getDescription();
+                  }
+
+                  @Override
+                  public byte[] getResponseMessage() {
+                    return result == null ? new byte[0] : result;
+                  }
+                });
           }
 
           @Override
@@ -172,10 +183,23 @@ public final class UpstreamGrpcSender implements GrpcSender {
               onError.accept(t);
             } else {
               onResponse.accept(
-                  ImmutableGrpcResponse.create(
-                      GrpcStatusCode.fromValue(status.getCode().value()),
-                      status.getDescription(),
-                      new byte[0]));
+                  new GrpcResponse() {
+                    @Override
+                    public GrpcStatusCode getStatusCode() {
+                      return GrpcStatusCode.fromValue(status.getCode().value());
+                    }
+
+                    @Nullable
+                    @Override
+                    public String getStatusDescription() {
+                      return status.getDescription();
+                    }
+
+                    @Override
+                    public byte[] getResponseMessage() {
+                      return new byte[0];
+                    }
+                  });
             }
           }
         },

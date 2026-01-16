@@ -9,8 +9,7 @@ description = "OpenTelemetry OkHttp Senders"
 otelJava.moduleName.set("io.opentelemetry.exporter.sender.okhttp.internal")
 
 dependencies {
-  implementation(project(":exporters:common"))
-  implementation(project(":sdk:common"))
+  implementation(project(":exporters:sender:api"))
 
   implementation("com.squareup.okhttp3:okhttp")
 

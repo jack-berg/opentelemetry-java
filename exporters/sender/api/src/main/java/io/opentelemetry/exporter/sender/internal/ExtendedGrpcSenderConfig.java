@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.exporter.internal.grpc;
+package io.opentelemetry.exporter.sender.internal;
 
-import io.opentelemetry.exporter.grpc.GrpcSenderConfig;
+import io.opentelemetry.exporter.sender.GrpcSenderConfig;
 import javax.annotation.Nullable;
 
 /**

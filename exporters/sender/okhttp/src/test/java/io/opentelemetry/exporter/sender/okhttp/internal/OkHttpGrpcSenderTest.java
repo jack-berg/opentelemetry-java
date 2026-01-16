@@ -8,9 +8,9 @@ package io.opentelemetry.exporter.sender.okhttp.internal;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
-import io.opentelemetry.exporter.internal.RetryUtil;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
+import io.opentelemetry.exporter.sender.MessageWriter;
+import io.opentelemetry.exporter.sender.internal.RetryUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.io.IOException;
 import java.io.OutputStream;

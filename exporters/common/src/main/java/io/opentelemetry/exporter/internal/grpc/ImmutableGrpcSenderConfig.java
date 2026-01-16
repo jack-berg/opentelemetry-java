@@ -6,7 +6,8 @@
 package io.opentelemetry.exporter.internal.grpc;
 
 import com.google.auto.value.AutoValue;
-import io.opentelemetry.exporter.compressor.Compressor;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.internal.ExtendedGrpcSenderConfig;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import java.net.URI;
 import java.time.Duration;

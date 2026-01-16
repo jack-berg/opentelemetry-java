@@ -7,9 +7,9 @@ package io.opentelemetry.exporter.sender.jdk.internal;
 
 import static java.util.stream.Collectors.joining;
 
-import io.opentelemetry.exporter.compressor.Compressor;
-import io.opentelemetry.exporter.http.HttpSender;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.HttpSender;
+import io.opentelemetry.exporter.sender.MessageWriter;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.ProxyOptions;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
@@ -152,7 +152,7 @@ public final class JdkHttpSender implements HttpSender {
   @Override
   public void send(
       MessageWriter messageWriter,
-      Consumer<io.opentelemetry.exporter.http.HttpResponse> onResponse,
+      Consumer<io.opentelemetry.exporter.sender.HttpResponse> onResponse,
       Consumer<Throwable> onError) {
     CompletableFuture<HttpResponse<byte[]>> unused =
         CompletableFuture.supplyAsync(
@@ -319,9 +319,9 @@ public final class JdkHttpSender implements HttpSender {
     }
   }
 
-  private static io.opentelemetry.exporter.http.HttpResponse toHttpResponse(
+  private static io.opentelemetry.exporter.sender.HttpResponse toHttpResponse(
       HttpResponse<byte[]> response) {
-    return new io.opentelemetry.exporter.http.HttpResponse() {
+    return new io.opentelemetry.exporter.sender.HttpResponse() {
       @Override
       public int getStatusCode() {
         return response.statusCode();

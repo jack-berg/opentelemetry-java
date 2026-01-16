@@ -5,7 +5,7 @@
 
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.MessageWriter;
 import java.io.OutputStream;
 import java.time.Duration;
 import java.util.Collections;

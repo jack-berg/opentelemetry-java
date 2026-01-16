@@ -10,8 +10,7 @@ otelJava.moduleName.set("io.opentelemetry.exporter.sender.jdk.internal")
 otelJava.minJavaVersionSupported.set(JavaVersion.VERSION_11)
 
 dependencies {
-  implementation(project(":exporters:common"))
-  implementation(project(":sdk:common"))
+  implementation(project(":exporters:sender:api"))
 
   testImplementation("com.fasterxml.jackson.core:jackson-core")
 }

@@ -24,12 +24,12 @@
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
 import io.opentelemetry.api.internal.InstrumentationUtil;
-import io.opentelemetry.exporter.compressor.Compressor;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
-import io.opentelemetry.exporter.internal.RetryUtil;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.GrpcResponse;
+import io.opentelemetry.exporter.sender.GrpcSender;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
+import io.opentelemetry.exporter.sender.MessageWriter;
+import io.opentelemetry.exporter.sender.internal.RetryUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import java.io.IOException;

@@ -5,9 +5,9 @@
 
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
-import io.opentelemetry.exporter.compressor.Compressor;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.exporter.sender.Compressor;
+import io.opentelemetry.exporter.sender.MessageWriter;
 import java.io.IOException;
 import javax.annotation.Nullable;
 import okhttp3.MediaType;

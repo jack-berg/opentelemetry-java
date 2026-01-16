@@ -7,12 +7,12 @@ package io.opentelemetry.exporter.otlp.profiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
 import io.opentelemetry.exporter.internal.grpc.GrpcExporter;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.exporter.otlp.testing.internal.AbstractGrpcTelemetryExporterTest;
 import io.opentelemetry.exporter.otlp.testing.internal.TelemetryExporter;
 import io.opentelemetry.exporter.otlp.testing.internal.TelemetryExporterBuilder;
+import io.opentelemetry.exporter.sender.GrpcStatusCode;
 import io.opentelemetry.exporter.sender.okhttp.internal.OkHttpGrpcSender;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.proto.profiles.v1development.ResourceProfiles;
