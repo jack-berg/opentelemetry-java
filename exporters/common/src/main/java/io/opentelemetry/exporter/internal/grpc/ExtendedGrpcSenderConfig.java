@@ -5,7 +5,7 @@
 
 package io.opentelemetry.exporter.internal.grpc;
 
-import io.opentelemetry.exporter.grpc.GrpcSenderConfig;
+import io.opentelemetry.exporter.GrpcSenderConfig;
 import javax.annotation.Nullable;
 
 /**

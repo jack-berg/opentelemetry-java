@@ -11,8 +11,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.exporter.http.HttpResponse;
-import io.opentelemetry.exporter.http.HttpSender;
+import io.opentelemetry.exporter.HttpResponse;
+import io.opentelemetry.exporter.HttpSender;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.sdk.common.InternalTelemetryVersion;

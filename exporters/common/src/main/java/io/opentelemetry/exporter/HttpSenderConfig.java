@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package io.opentelemetry.exporter.grpc;
+package io.opentelemetry.exporter;
 
-import io.opentelemetry.exporter.compressor.Compressor;
-import io.opentelemetry.exporter.marshal.MessageWriter;
+import io.opentelemetry.sdk.common.export.ProxyOptions;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import java.io.OutputStream;
 import java.net.URI;
@@ -22,30 +21,24 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.X509TrustManager;
 
 /**
- * Configuration for {@link GrpcSender} implementations, provided via {@link
- * GrpcSenderProvider#createSender(GrpcSenderConfig)}.
+ * Configuration for {@link HttpSender} implementations, provided via {@link
+ * HttpSenderProvider#createSender(HttpSenderConfig)}.
  */
 @Immutable
-public interface GrpcSenderConfig {
+public interface HttpSenderConfig {
 
-  /**
-   * The gRPC endpoint to send to, including scheme. Omits path, which must be obtained from {@link
-   * #getFullMethodName()}.
-   */
+  /** The fully qualified endpoint to send to, including scheme and path. */
   URI getEndpoint();
 
-  /**
-   * The fully qualified gRPC method name, e.g. {@code
-   * opentelemetry.proto.collector.trace.v1.TraceService/Export}.
-   */
-  String getFullMethodName();
+  /** The payload content type to set as the {@code Content-Type} header. */
+  String getContentType();
 
   /**
    * The compressor, or {@code null} if no compression is used. If present, {@link
    * Compressor#compress(OutputStream)} must be applied to {@link
-   * MessageWriter#writeMessage(OutputStream)} when {@link GrpcSender#send(MessageWriter, Consumer,
+   * MessageWriter#writeMessage(OutputStream)} when {@link HttpSender#send(MessageWriter, Consumer,
    * Consumer)} is called and {@link Compressor#getEncoding()} must be set as the {@code
-   * grpc-encoding}.
+   * Content-Encoding} header.
    */
   @Nullable
   Compressor getCompressor();
@@ -64,6 +57,10 @@ public interface GrpcSenderConfig {
    * be invoked for each request.
    */
   Supplier<Map<String, List<String>>> getHeadersSupplier();
+
+  /** The proxy options, or {@code null} if no proxy is used. */
+  @Nullable
+  ProxyOptions getProxyOptions();
 
   /** The retry policy, or {@code null} if retry is disabled. */
   @Nullable

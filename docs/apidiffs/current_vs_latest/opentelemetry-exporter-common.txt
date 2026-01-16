@@ -1,26 +1,26 @@
 Comparing source compatibility of opentelemetry-exporter-common-1.59.0-SNAPSHOT.jar against opentelemetry-exporter-common-1.58.0.jar
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.compressor.Compressor  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.Compressor  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.io.OutputStream compress(java.io.OutputStream)
 		+++  NEW EXCEPTION: java.io.IOException
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.lang.String getEncoding()
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcResponse  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcResponse  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) byte[] getResponseMessage()
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcStatusCode getStatusCode()
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcStatusCode getStatusCode()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.lang.String getStatusDescription()
 		+++  NEW ANNOTATION: javax.annotation.Nullable
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcSender  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcSender  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) void send(io.opentelemetry.exporter.marshal.MessageWriter, java.util.function.Consumer<io.opentelemetry.exporter.grpc.GrpcResponse>, java.util.function.Consumer<java.lang.Throwable>)
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) void send(io.opentelemetry.exporter.MessageWriter, java.util.function.Consumer<io.opentelemetry.exporter.GrpcResponse>, java.util.function.Consumer<java.lang.Throwable>)
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.sdk.common.CompletableResultCode shutdown()
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcSenderConfig  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcSenderConfig  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.compressor.Compressor getCompressor()
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.Compressor getCompressor()
 		+++  NEW ANNOTATION: javax.annotation.Nullable
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.time.Duration getConnectTimeout()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.net.URI getEndpoint()
@@ -35,52 +35,52 @@ Comparing source compatibility of opentelemetry-exporter-common-1.59.0-SNAPSHOT.
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.time.Duration getTimeout()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) javax.net.ssl.X509TrustManager getTrustManager()
 		+++  NEW ANNOTATION: javax.annotation.Nullable
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcSenderProvider  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcSenderProvider  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.grpc.GrpcSender createSender(io.opentelemetry.exporter.grpc.GrpcSenderConfig)
-+++  NEW ENUM: PUBLIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode  (compatible)
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.GrpcSender createSender(io.opentelemetry.exporter.GrpcSenderConfig)
++++  NEW ENUM: PUBLIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode  (compatible)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW INTERFACE: java.lang.constant.Constable
 	+++  NEW INTERFACE: java.lang.Comparable
 	+++  NEW INTERFACE: java.io.Serializable
 	+++  NEW SUPERCLASS: java.lang.Enum
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode RESOURCE_EXHAUSTED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode ALREADY_EXISTS
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode UNIMPLEMENTED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode FAILED_PRECONDITION
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode NOT_FOUND
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode DEADLINE_EXCEEDED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode OUT_OF_RANGE
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode UNAUTHENTICATED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode CANCELLED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode DATA_LOSS
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode INTERNAL
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode UNAVAILABLE
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode UNKNOWN
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode ABORTED
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode OK
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode INVALID_ARGUMENT
-	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.grpc.GrpcStatusCode PERMISSION_DENIED
-	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.grpc.GrpcStatusCode fromValue(int)
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode RESOURCE_EXHAUSTED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode ALREADY_EXISTS
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode UNIMPLEMENTED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode FAILED_PRECONDITION
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode NOT_FOUND
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode DEADLINE_EXCEEDED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode OUT_OF_RANGE
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode UNAUTHENTICATED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode CANCELLED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode DATA_LOSS
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode INTERNAL
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode UNAVAILABLE
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode UNKNOWN
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode ABORTED
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode OK
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode INVALID_ARGUMENT
+	+++  NEW FIELD: PUBLIC(+) STATIC(+) FINAL(+) io.opentelemetry.exporter.GrpcStatusCode PERMISSION_DENIED
+	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.GrpcStatusCode fromValue(int)
 	+++  NEW METHOD: PUBLIC(+) int getValue()
-	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.grpc.GrpcStatusCode valueOf(java.lang.String)
-	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.grpc.GrpcStatusCode[] values()
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.http.HttpResponse  (not serializable)
+	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.GrpcStatusCode valueOf(java.lang.String)
+	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.exporter.GrpcStatusCode[] values()
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.HttpResponse  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) byte[] getResponseBody()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) int getStatusCode()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.lang.String getStatusMessage()
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.http.HttpSender  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.HttpSender  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) void send(io.opentelemetry.exporter.marshal.MessageWriter, java.util.function.Consumer<io.opentelemetry.exporter.http.HttpResponse>, java.util.function.Consumer<java.lang.Throwable>)
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) void send(io.opentelemetry.exporter.MessageWriter, java.util.function.Consumer<io.opentelemetry.exporter.HttpResponse>, java.util.function.Consumer<java.lang.Throwable>)
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.sdk.common.CompletableResultCode shutdown()
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.http.HttpSenderConfig  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.HttpSenderConfig  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.compressor.Compressor getCompressor()
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.Compressor getCompressor()
 		+++  NEW ANNOTATION: javax.annotation.Nullable
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.time.Duration getConnectTimeout()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.lang.String getContentType()
@@ -97,11 +97,11 @@ Comparing source compatibility of opentelemetry-exporter-common-1.59.0-SNAPSHOT.
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) java.time.Duration getTimeout()
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) javax.net.ssl.X509TrustManager getTrustManager()
 		+++  NEW ANNOTATION: javax.annotation.Nullable
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.http.HttpSenderProvider  (not serializable)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.HttpSenderProvider  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
-	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.http.HttpSender createSender(io.opentelemetry.exporter.http.HttpSenderConfig)
-+++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.marshal.MessageWriter  (not serializable)
+	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.HttpSender createSender(io.opentelemetry.exporter.HttpSenderConfig)
++++  NEW INTERFACE: PUBLIC(+) ABSTRACT(+) io.opentelemetry.exporter.MessageWriter  (not serializable)
 	+++  CLASS FILE FORMAT VERSION: 52.0 <- n.a.
 	+++  NEW SUPERCLASS: java.lang.Object
 	+++  NEW METHOD: PUBLIC(+) ABSTRACT(+) int getContentLength()

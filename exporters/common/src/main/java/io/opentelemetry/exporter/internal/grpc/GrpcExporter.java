@@ -6,9 +6,9 @@
 package io.opentelemetry.exporter.internal.grpc;
 
 import io.opentelemetry.api.metrics.MeterProvider;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
+import io.opentelemetry.exporter.GrpcResponse;
+import io.opentelemetry.exporter.GrpcSender;
+import io.opentelemetry.exporter.GrpcStatusCode;
 import io.opentelemetry.exporter.internal.FailedExportException;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.exporter.internal.metrics.ExporterInstrumentation;

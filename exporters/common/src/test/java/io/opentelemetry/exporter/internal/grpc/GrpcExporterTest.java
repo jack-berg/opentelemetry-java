@@ -5,16 +5,16 @@
 
 package io.opentelemetry.exporter.internal.grpc;
 
-import static io.opentelemetry.exporter.grpc.GrpcStatusCode.UNAVAILABLE;
+import static io.opentelemetry.exporter.GrpcStatusCode.UNAVAILABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
+import io.opentelemetry.exporter.GrpcResponse;
+import io.opentelemetry.exporter.GrpcSender;
+import io.opentelemetry.exporter.GrpcStatusCode;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.sdk.common.InternalTelemetryVersion;

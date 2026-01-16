@@ -21,12 +21,12 @@ import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ClientCalls;
 import io.grpc.stub.MetadataUtils;
-import io.opentelemetry.exporter.grpc.GrpcResponse;
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcStatusCode;
+import io.opentelemetry.exporter.GrpcResponse;
+import io.opentelemetry.exporter.GrpcSender;
+import io.opentelemetry.exporter.GrpcStatusCode;
+import io.opentelemetry.exporter.MessageWriter;
 import io.opentelemetry.exporter.internal.grpc.ImmutableGrpcResponse;
 import io.opentelemetry.exporter.internal.grpc.MarshalerInputStream;
-import io.opentelemetry.exporter.marshal.MessageWriter;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import java.io.IOException;
 import java.io.InputStream;
@@ -86,7 +86,7 @@ public final class UpstreamGrpcSender implements GrpcSender {
   public UpstreamGrpcSender(
       ManagedChannel channel,
       String fullMethodName,
-      @Nullable io.opentelemetry.exporter.compressor.Compressor compressor,
+      @Nullable io.opentelemetry.exporter.Compressor compressor,
       boolean shutdownChannel,
       Duration timeout,
       Supplier<Map<String, List<String>>> headersSupplier,

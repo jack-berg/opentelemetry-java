@@ -5,9 +5,9 @@
 
 package io.opentelemetry.exporter.sender.okhttp.internal;
 
-import io.opentelemetry.exporter.grpc.GrpcSender;
-import io.opentelemetry.exporter.grpc.GrpcSenderConfig;
-import io.opentelemetry.exporter.grpc.GrpcSenderProvider;
+import io.opentelemetry.exporter.GrpcSender;
+import io.opentelemetry.exporter.GrpcSenderConfig;
+import io.opentelemetry.exporter.GrpcSenderProvider;
 
 /**
  * {@link GrpcSender} SPI implementation for {@link OkHttpGrpcSender}.
