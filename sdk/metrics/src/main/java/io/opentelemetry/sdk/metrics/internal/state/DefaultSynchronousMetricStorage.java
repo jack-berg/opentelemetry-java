@@ -238,18 +238,15 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
      * #releaseHolderForRecord(AggregatorHolder)} when record operation completes to signal to that
      * its safe to proceed with Collect operations.
      */
+    @SuppressWarnings("ThreadPriorityCheck")
     private AggregatorHolder<T> getHolderForRecord() {
-      do {
-        AggregatorHolder<T> aggregatorHolder = this.aggregatorHolder;
-        int recordsInProgress = aggregatorHolder.activeRecordingThreads.addAndGet(2);
-        if (recordsInProgress % 2 == 0) {
-          return aggregatorHolder;
-        } else {
-          // Collect is in progress, decrement recordsInProgress to allow collect to proceed and
-          // re-read aggregatorHolder
-          aggregatorHolder.activeRecordingThreads.addAndGet(-2);
-        }
-      } while (true);
+      AggregatorHolder<T> aggregatorHolder = this.aggregatorHolder;
+      while (!aggregatorHolder.readyToRecord()) {
+        aggregatorHolder.releaseForRecord();
+        aggregatorHolder = this.aggregatorHolder;
+        Thread.yield();
+      }
+      return aggregatorHolder;
     }
 
     /**
@@ -257,7 +254,7 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
      * indicate that recording is complete, and it is safe to collect.
      */
     private void releaseHolderForRecord(AggregatorHolder<T> aggregatorHolder) {
-      aggregatorHolder.activeRecordingThreads.addAndGet(-2);
+      aggregatorHolder.releaseForRecord();
     }
 
     @Override
@@ -277,10 +274,7 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
       // record operations should re-read the volatile this.aggregatorHolder.
       // Repeatedly grab recordsInProgress until it is <= 1, which signals all active record
       // operations are complete.
-      int recordsInProgress = holder.activeRecordingThreads.addAndGet(1);
-      while (recordsInProgress > 1) {
-        recordsInProgress = holder.activeRecordingThreads.get();
-      }
+      holder.awaitReadyToCollect();
       aggregatorHandles = holder.aggregatorHandles;
 
       List<T> points;
@@ -379,14 +373,49 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
     // (AggregatorHolder), and so if a recording thread encounters an odd value,
     // all it needs to do is release the "read lock" it just obtained (decrementing by 2),
     // and then grab and record against the new current interval (AggregatorHolder).
-    private final AtomicInteger activeRecordingThreads = new AtomicInteger(0);
+    private final AtomicInteger[] recordLocks;
 
     private AggregatorHolder() {
-      aggregatorHandles = new ConcurrentHashMap<>();
+      this(new ConcurrentHashMap<>());
     }
 
     private AggregatorHolder(ConcurrentHashMap<Attributes, AggregatorHandle<T>> aggregatorHandles) {
       this.aggregatorHandles = aggregatorHandles;
+      recordLocks = new AtomicInteger[Runtime.getRuntime().availableProcessors()];
+      for (int i = 0; i < recordLocks.length; i++) {
+        recordLocks[i] = new AtomicInteger(0);
+      }
+    }
+
+    private boolean readyToRecord() {
+      return lockForThread().addAndGet(2) % 2 == 0;
+    }
+
+    private void releaseForRecord() {
+      lockForThread().addAndGet(-2);
+    }
+
+    @SuppressWarnings("ThreadPriorityCheck")
+    private void awaitReadyToCollect() {
+      for (int i = 0; i < recordLocks.length; i++) {
+        recordLocks[i].addAndGet(1);
+      }
+      while (!allReadyToCollect()) {
+        Thread.yield();
+      }
+    }
+
+    private boolean allReadyToCollect() {
+      for (int i = 0; i < recordLocks.length; i++) {
+        if (recordLocks[i].get() != 1) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    private AtomicInteger lockForThread() {
+      return recordLocks[((int) Thread.currentThread().getId()) % recordLocks.length];
     }
   }
 
