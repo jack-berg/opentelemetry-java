@@ -108,8 +108,11 @@ public interface TraceFlags {
    *
    * @return a new {@link TraceFlags} object representing {@code this | SAMPLED_BIT}
    */
-  default TraceFlags withSampledBit() {
-    byte newByte = (byte) (asByte() | ImmutableTraceFlags.SAMPLED_BIT);
+  static TraceFlags withSampled(TraceFlags traceFlags, boolean isSampled) {
+    byte newByte =
+        isSampled
+            ? (byte) (traceFlags.asByte() | ImmutableTraceFlags.SAMPLED_BIT)
+            : (byte) (traceFlags.asByte() & ~ImmutableTraceFlags.SAMPLED_BIT);
     return ImmutableTraceFlags.fromByte(newByte);
   }
 
@@ -119,8 +122,11 @@ public interface TraceFlags {
    *
    * @return a new {@link TraceFlags} object representing {@code this | RANDOM_TRACE_ID_BIT}
    */
-  default TraceFlags withRandomTraceIdBit() {
-    byte newByte = (byte) (asByte() | ImmutableTraceFlags.RANDOM_TRACE_ID_BIT);
+  static TraceFlags withRandomTraceId(TraceFlags traceFlags, boolean isRandomTraceId) {
+    byte newByte =
+        isRandomTraceId
+            ? (byte) (traceFlags.asByte() | ImmutableTraceFlags.RANDOM_TRACE_ID_BIT)
+            : (byte) (traceFlags.asByte() & ~ImmutableTraceFlags.RANDOM_TRACE_ID_BIT);
     return ImmutableTraceFlags.fromByte(newByte);
   }
 }

@@ -37,11 +37,12 @@ import javax.annotation.Nullable;
 /** {@link SdkSpanBuilder} is SDK implementation of {@link SpanBuilder}. */
 class SdkSpanBuilder implements SpanBuilder {
 
+  private static final Context ROOT_CONTEXT_WITH_RANDOM_TRACE_ID_BIT = preparePrimordialContext();
+
   private final String spanName;
   private final InstrumentationScopeInfo instrumentationScopeInfo;
   private final TracerSharedState tracerSharedState;
   private final SpanLimits spanLimits;
-  private final Context rootContextWithRandomTraceIdBit;
 
   @Nullable private Context parent; // null means: Use current context.
   private SpanKind spanKind = SpanKind.INTERNAL;
@@ -59,23 +60,21 @@ class SdkSpanBuilder implements SpanBuilder {
     this.instrumentationScopeInfo = instrumentationScopeInfo;
     this.tracerSharedState = tracerSharedState;
     this.spanLimits = spanLimits;
-    this.rootContextWithRandomTraceIdBit =
-        preparePrimordialContext(
-            Context.root(),
-            TraceFlags.getDefault().withRandomTraceIdBit(),
-            TraceState.getDefault());
   }
 
   /*
    * A primordial context can be passed as the parent context for a root span
    * if a non-default TraceFlags or TraceState need to be passed to the sampler
    */
-  private static Context preparePrimordialContext(
-      Context parentContext, TraceFlags traceFlags, TraceState traceState) {
+  private static Context preparePrimordialContext() {
     SpanContext spanContext =
-        SpanContext.create(TraceId.getInvalid(), SpanId.getInvalid(), traceFlags, traceState);
+        SpanContext.create(
+            TraceId.getInvalid(),
+            SpanId.getInvalid(),
+            TraceFlags.withRandomTraceId(TraceFlags.getDefault(), /* isRandomTraceId= */ true),
+            TraceState.getDefault());
     Span span = Span.wrap(spanContext);
-    return span.storeInContext(parentContext);
+    return span.storeInContext(Context.root());
   }
 
   @Override
@@ -201,7 +200,7 @@ class SdkSpanBuilder implements SpanBuilder {
       if (idGenerator.generatesRandomTraceIds()) {
         isTraceIdRandom = true;
         // Replace parentContext for sampling with one with RANDOM_TRACE_ID bit set
-        parentContextForSampler = rootContextWithRandomTraceIdBit;
+        parentContextForSampler = ROOT_CONTEXT_WITH_RANDOM_TRACE_ID_BIT;
       } else {
         isTraceIdRandom = false;
       }
@@ -235,7 +234,9 @@ class SdkSpanBuilder implements SpanBuilder {
         ImmutableSpanContext.create(
             traceId,
             spanId,
-            newTraceFlags(isTraceIdRandom, isSampled(samplingDecision)),
+            TraceFlags.withRandomTraceId(
+                TraceFlags.withSampled(TraceFlags.getDefault(), isSampled(samplingDecision)),
+                isTraceIdRandom),
             samplingResultTraceState,
             /* remote= */ false,
             tracerSharedState.isIdGeneratorSafeToSkipIdValidation());
@@ -273,17 +274,6 @@ class SdkSpanBuilder implements SpanBuilder {
         totalNumberOfLinksAdded,
         startEpochNanos,
         recordEndSpanMetrics);
-  }
-
-  private static TraceFlags newTraceFlags(boolean randomTraceId, boolean sampled) {
-    TraceFlags traceFlags = TraceFlags.getDefault();
-    if (randomTraceId) {
-      traceFlags = traceFlags.withRandomTraceIdBit();
-    }
-    if (sampled) {
-      traceFlags = traceFlags.withSampledBit();
-    }
-    return traceFlags;
   }
 
   private AttributesMap attributes() {

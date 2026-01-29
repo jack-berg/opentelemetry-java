@@ -2,5 +2,5 @@ Comparing source compatibility of opentelemetry-api-1.59.0-SNAPSHOT.jar against 
 ***  MODIFIED INTERFACE: PUBLIC ABSTRACT io.opentelemetry.api.trace.TraceFlags  (not serializable)
 	===  CLASS FILE FORMAT VERSION: 52.0 <- 52.0
 	+++  NEW METHOD: PUBLIC(+) boolean isTraceIdRandom()
-	+++  NEW METHOD: PUBLIC(+) io.opentelemetry.api.trace.TraceFlags withRandomTraceIdBit()
-	+++  NEW METHOD: PUBLIC(+) io.opentelemetry.api.trace.TraceFlags withSampledBit()
+	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.api.trace.TraceFlags withRandomTraceId(io.opentelemetry.api.trace.TraceFlags, boolean)
+	+++  NEW METHOD: PUBLIC(+) STATIC(+) io.opentelemetry.api.trace.TraceFlags withSampled(io.opentelemetry.api.trace.TraceFlags, boolean)
