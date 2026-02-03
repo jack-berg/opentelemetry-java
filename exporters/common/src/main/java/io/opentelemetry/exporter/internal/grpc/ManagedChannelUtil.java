@@ -53,29 +53,5 @@ public final class ManagedChannelUtil {
     return Collections.singletonMap("methodConfig", Collections.singletonList(methodConfig));
   }
 
-  /** Shutdown the gRPC channel. */
-  public static CompletableResultCode shutdownChannel(ManagedChannel managedChannel) {
-    CompletableResultCode result = new CompletableResultCode();
-    managedChannel.shutdown();
-    // Remove thread creation if gRPC adds an asynchronous shutdown API.
-    // https://github.com/grpc/grpc-java/issues/8432
-    Thread thread =
-        new Thread(
-            () -> {
-              try {
-                managedChannel.awaitTermination(10, TimeUnit.SECONDS);
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.log(Level.WARNING, "Failed to shutdown the gRPC channel", e);
-                result.fail();
-              }
-              result.succeed();
-            });
-    thread.setDaemon(true);
-    thread.setName("grpc-cleanup");
-    thread.start();
-    return result;
-  }
-
   private ManagedChannelUtil() {}
 }

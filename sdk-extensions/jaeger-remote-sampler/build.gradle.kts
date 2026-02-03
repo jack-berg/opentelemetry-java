@@ -14,13 +14,12 @@ dependencies {
   api(project(":sdk:all"))
   compileOnly(project(":api:incubator"))
   compileOnly(project(":sdk-extensions:autoconfigure"))
-  compileOnly(project(":sdk-extensions:incubator"))
+  // TODO: uncomment and restor ComponentProvider before merging
+  // compileOnly(project(":sdk-extensions:incubator"))
 
   implementation(project(":sdk:all"))
   implementation(project(":exporters:common"))
   implementation(project(":exporters:sender:okhttp"))
-
-  implementation("com.squareup.okhttp3:okhttp")
 
   compileOnly("io.grpc:grpc-api")
   compileOnly("io.grpc:grpc-protobuf")
@@ -41,12 +40,23 @@ testing {
       dependencies {
         implementation(project(":sdk:testing"))
         implementation(project(":exporters:common"))
+        implementation(project(":exporters:sender:grpc-managed-channel"))
         implementation("com.google.protobuf:protobuf-java")
         implementation("com.linecorp.armeria:armeria-junit5")
         implementation("com.linecorp.armeria:armeria-grpc-protocol")
         implementation("org.testcontainers:testcontainers-junit-jupiter")
         implementation("io.grpc:grpc-netty")
         implementation("io.grpc:grpc-stub")
+      }
+      targets {
+        all {
+          testTask {
+            systemProperty(
+              "io.opentelemetry.sdk.common.export.GrpcSenderProvider",
+              "io.opentelemetry.exporter.sender.grpc.managedchannel.internal.UpstreamGrpcSenderProvider"
+            )
+          }
+        }
       }
     }
   }

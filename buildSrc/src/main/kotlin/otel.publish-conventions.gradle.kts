@@ -2,7 +2,8 @@ plugins {
   `maven-publish`
   signing
 
-  id("otel.japicmp-conventions")
+  // TODO: uncomment before merging
+  // id("otel.japicmp-conventions")
 }
 
 publishing {
