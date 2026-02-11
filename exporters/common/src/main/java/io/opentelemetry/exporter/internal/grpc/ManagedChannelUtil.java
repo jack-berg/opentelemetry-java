@@ -7,18 +7,13 @@ package io.opentelemetry.exporter.internal.grpc;
 
 import static java.util.stream.Collectors.toList;
 
-import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.opentelemetry.exporter.internal.RetryUtil;
-import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.RetryPolicy;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Utilities for working with gRPC channels.
@@ -27,8 +22,6 @@ import java.util.logging.Logger;
  * at any time.
  */
 public final class ManagedChannelUtil {
-
-  private static final Logger logger = Logger.getLogger(ManagedChannelUtil.class.getName());
 
   /**
    * Convert the {@link RetryPolicy} into a gRPC service config for the {@code serviceName}. The

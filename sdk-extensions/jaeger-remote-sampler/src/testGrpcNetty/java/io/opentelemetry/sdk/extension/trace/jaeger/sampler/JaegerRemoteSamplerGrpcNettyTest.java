@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import org.awaitility.core.ThrowingRunnable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -99,21 +100,26 @@ class JaegerRemoteSamplerGrpcNettyTest {
         }
       };
 
+  private ManagedChannel managedChannel;
+
   @BeforeEach
   public void before() {
     grpcErrors.clear();
     responses.clear();
+    managedChannel =
+        ManagedChannelBuilder.forTarget(server.httpUri().getAuthority()).usePlaintext().build();
   }
 
-  private static ManagedChannel managedChannel() {
-    return ManagedChannelBuilder.forTarget(server.httpUri().getAuthority()).usePlaintext().build();
+  @AfterEach
+  public void after() {
+    managedChannel.shutdownNow();
   }
 
   @Test
   void connectionWorks() {
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setEndpoint(server.httpUri().toString())
             .setPollingInterval(1, TimeUnit.SECONDS)
             .setServiceName(SERVICE_NAME)
@@ -131,7 +137,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
   void description() {
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setPollingInterval(1, TimeUnit.SECONDS)
             .setServiceName(SERVICE_NAME)
             .build()) {
@@ -147,9 +153,11 @@ class JaegerRemoteSamplerGrpcNettyTest {
 
   @Test
   void initialSampler() {
+    managedChannel.shutdown();
+    managedChannel = ManagedChannelBuilder.forTarget("example.com").build();
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(ManagedChannelBuilder.forTarget("example.com").build())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             .setInitialSampler(Sampler.alwaysOn())
             .build()) {
@@ -163,7 +171,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
   void pollingInterval() {
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             .setPollingInterval(1, TimeUnit.MILLISECONDS)
             .build()) {
@@ -178,7 +186,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
   void pollingInterval_duration() {
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             .setPollingInterval(Duration.ofMillis(1))
             .build()) {
@@ -222,7 +230,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
 
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             // Make sure only polls once.
             .setPollingInterval(500, TimeUnit.SECONDS)
@@ -246,7 +254,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
 
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             // Make sure only polls once.
             .setPollingInterval(500, TimeUnit.SECONDS)
@@ -272,7 +280,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
 
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             // Make sure only polls once.
             .setPollingInterval(500, TimeUnit.SECONDS)
@@ -297,7 +305,7 @@ class JaegerRemoteSamplerGrpcNettyTest {
 
     try (JaegerRemoteSampler sampler =
         JaegerRemoteSampler.builder()
-            .setChannel(managedChannel())
+            .setChannel(managedChannel)
             .setServiceName(SERVICE_NAME)
             // Make sure only polls once.
             .setPollingInterval(500, TimeUnit.SECONDS)
