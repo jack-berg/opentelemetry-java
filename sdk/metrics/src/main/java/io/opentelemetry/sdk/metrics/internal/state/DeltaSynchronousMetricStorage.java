@@ -56,6 +56,7 @@ class DeltaSynchronousMetricStorage<T extends PointData>
   }
 
   @Override
+  @SuppressWarnings("ThreadPriorityCheck")
   void doRecordLong(long value, Attributes attributes, Context context) {
     while (true) {
       DeltaAggregatorHandle<T> deltaHandle = getDeltaAggregatorHandle(attributes, context);
@@ -68,12 +69,14 @@ class DeltaSynchronousMetricStorage<T extends PointData>
         }
         return;
       }
-      // Handle is being collected; release and re-read the map to retry
+      // Handle is being collected; release and yield to let the collector advance
       deltaHandle.activeRecordingThreads.addAndGet(-2);
+      Thread.yield();
     }
   }
 
   @Override
+  @SuppressWarnings("ThreadPriorityCheck")
   void doRecordDouble(double value, Attributes attributes, Context context) {
     while (true) {
       DeltaAggregatorHandle<T> deltaHandle = getDeltaAggregatorHandle(attributes, context);
@@ -86,11 +89,14 @@ class DeltaSynchronousMetricStorage<T extends PointData>
         }
         return;
       }
+      // Handle is being collected; release and yield to let the collector advance
       deltaHandle.activeRecordingThreads.addAndGet(-2);
+      Thread.yield();
     }
   }
 
   @Override
+  @SuppressWarnings("ThreadPriorityCheck")
   public MetricData collect(
       Resource resource, InstrumentationScopeInfo instrumentationScopeInfo, long epochNanos) {
     // Snapshot the handles to process this cycle. Handles added after this snapshot
