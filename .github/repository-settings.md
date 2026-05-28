@@ -4,7 +4,6 @@ This document describes any changes that have been made to the
 settings in this repository outside the settings tracked in the
 private admin repo.
 
-
 ## Environments
 
 ### `protected` environment
