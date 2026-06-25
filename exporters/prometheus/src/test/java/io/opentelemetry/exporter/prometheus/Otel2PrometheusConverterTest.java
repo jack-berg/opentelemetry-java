@@ -61,6 +61,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1233,12 +1234,15 @@ class Otel2PrometheusConverterTest {
                 Labels.of(new String[] {"id"}, new String[] {id}))));
   }
 
-  private static Object invokePrivateStatic(
-      String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
+  private Object invokePrivateStatic(String methodName, Class<?>[] parameterTypes, Object... args)
+      throws Exception {
     Method method = Otel2PrometheusConverter.class.getDeclaredMethod(methodName, parameterTypes);
     method.setAccessible(true);
+    // Support both static and instance methods: static methods receive null, instance methods
+    // receive the converter instance so that instance fields (e.g. throttlingLogger) are available.
+    Object instance = Modifier.isStatic(method.getModifiers()) ? null : converter;
     try {
-      return method.invoke(null, args);
+      return method.invoke(instance, args);
     } catch (InvocationTargetException e) {
       throw e;
     }

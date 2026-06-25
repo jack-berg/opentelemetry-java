@@ -11,12 +11,15 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.incubator.config.DeclarativeConfigProperties;
+import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
+import io.opentelemetry.sdk.extension.trace.jaeger.sampler.JaegerRemoteSampler;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.Objects;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junitpioneer.jupiter.ClearSystemProperty;
 
+@SuppressLogger(JaegerRemoteSampler.class)
 class ServiceResourceDetectorTest {
 
   @Test

@@ -19,6 +19,7 @@ import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.internal.testing.slf4j.SuppressLogger;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest;
 import io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse;
 import io.opentelemetry.proto.collector.logs.v1.LogsServiceGrpc;
@@ -56,6 +57,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** Same as {@code FullConfigTest}, but using declarative configuration. */
 @SuppressWarnings("InterruptedExceptionSwallowed")
+@SuppressLogger(
+    loggerName =
+        "io.opentelemetry.sdk.autoconfigure.declarativeconfig.OpenTelemetryConfigurationFactory")
 public class FullDeclarativeConfigTest {
 
   private static final BlockingQueue<ExportTraceServiceRequest> otlpTraceRequests =
@@ -129,7 +133,7 @@ public class FullDeclarativeConfigTest {
 
     String endpoint = "http://localhost:" + server.httpPort();
     String yaml =
-        "file_format: \"1.0\"\n"
+        "file_format: \"1.1\"\n"
             + "resource:\n"
             + "  attributes:\n"
             + "    - name: service.name\n"

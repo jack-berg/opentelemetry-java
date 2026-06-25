@@ -46,6 +46,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.event.Level;
 
+@SuppressLogger(OpenTelemetryConfigurationFactory.class)
 class DeclarativeConfigurationCreateTest {
 
   @RegisterExtension

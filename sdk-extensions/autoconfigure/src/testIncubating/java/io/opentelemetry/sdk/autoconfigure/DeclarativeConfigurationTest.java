@@ -48,6 +48,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.event.Level;
 
+@SuppressLogger(
+    loggerName =
+        "io.opentelemetry.sdk.autoconfigure.declarativeconfig.OpenTelemetryConfigurationFactory")
 class DeclarativeConfigurationTest {
 
   @RegisterExtension private static final CleanupExtension cleanup = new CleanupExtension();
