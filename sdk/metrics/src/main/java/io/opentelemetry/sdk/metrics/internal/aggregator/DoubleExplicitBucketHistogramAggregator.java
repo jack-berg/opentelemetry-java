@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.Nullable;
@@ -98,20 +99,23 @@ public final class DoubleExplicitBucketHistogramAggregator
   /**
    * Adaptive-striping histogram handle.
    *
-   * <p>Starts with a single {@link Cell} ({@link #base}) guarded by its own {@link ReentrantLock}.
-   * The record path uses {@code tryLock()} on the base cell; the first time it fails (i.e., the
-   * first observed contention), the handle allocates a fixed-size cells array (one slot per CPU)
-   * and from then on routes recorders to a cell chosen by thread id. Each cell has its own lock, so
-   * recorders can proceed in parallel across cells.
+   * <p>The base state (sum, min, max, per-bucket counts) is stored inline on the handle and guarded
+   * by a CAS spinlock ({@link #baseLockState}). The record path uses a single {@code
+   * compareAndSet(0, 1)} to acquire and a volatile store to release; on {@code compareAndSet}
+   * failure it escalates to a striped {@link Cell} array (allocated once, sized to {@code
+   * availableProcessors()}) and routes recorders by thread id. Each cell has its own {@link
+   * ReentrantLock}, so recorders can proceed in parallel across cells; the {@code ReentrantLock}
+   * (rather than another CAS spinlock) is chosen for cells because after escalation we're in the
+   * contended regime where blocking via {@code park()} beats burning CPU on spins.
    *
-   * <p>Uncontended workloads never allocate {@link #cells} and pay only one {@code tryLock} +
-   * primitive field updates + unlock per record, on par with the previous {@code synchronized}
-   * implementation. Contended workloads pay one probe + one cell lock acquire, with contention
-   * distributed across {@code Runtime.getRuntime().availableProcessors()} cells.
+   * <p>Uncontended workloads never allocate {@link #cells} and pay one CAS + primitive field
+   * updates + one volatile store per record. This is intended to match or beat the previous {@code
+   * synchronized} implementation's uncontended cost.
    *
-   * <p>Collection acquires base and all cell locks in turn for a consistent cross-cell snapshot and
-   * then merges: sums are added, min/max are reduced, per-bucket counts are summed. Total {@code
-   * count} is derived from the sum of the bucket counts, saving a per-record field write.
+   * <p>Collection acquires the base spinlock (with a plain busy-spin) and every cell lock in turn
+   * for a consistent cross-cell snapshot, then merges: sums are added, min/max are reduced,
+   * per-bucket counts are summed. Total {@code count} is derived from the sum of bucket counts,
+   * saving a per-record field write.
    */
   static final class Handle extends AggregatorHandle<HistogramPointData> {
     // read-only
@@ -120,12 +124,19 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final double[] boundaries;
     private final boolean recordMinMax;
 
-    // Always present. Serves both as the uncontended fast-path target and as the merge sink at
-    // collect time.
-    private final Cell base;
+    // Base state — all fields guarded by baseLockState (CAS spinlock).
+    // Inlined onto Handle (rather than wrapped in a Cell) to keep the uncontended record path as
+    // cheap as possible: one CAS acquire, direct field updates, one volatile store to release.
+    @SuppressWarnings("UnusedVariable")
+    private volatile int baseLockState; // 0 = free, 1 = held
 
-    // Null until the first tryLock() failure on base. Installed once via CAS and never resized or
-    // cleared. Reads are volatile via the field declaration.
+    private double baseSum;
+    private double baseMin = Double.MAX_VALUE;
+    private double baseMax = -1;
+    private final long[] baseCounts;
+
+    // Null until the first CAS failure on baseLockState. Installed once via CAS and never resized
+    // or cleared. Reads are volatile via the field declaration.
     @SuppressWarnings("UnusedVariable")
     @Nullable
     private volatile Cell[] cells;
@@ -137,6 +148,8 @@ public final class DoubleExplicitBucketHistogramAggregator
     // Used only when MemoryMode = REUSABLE_DATA
     @Nullable private final MutableHistogramPointData reusablePoint;
 
+    private static final AtomicIntegerFieldUpdater<Handle> BASE_LOCK =
+        AtomicIntegerFieldUpdater.newUpdater(Handle.class, "baseLockState");
     private static final AtomicReferenceFieldUpdater<Handle, Cell[]> CELLS =
         AtomicReferenceFieldUpdater.newUpdater(Handle.class, Cell[].class, "cells");
 
@@ -152,7 +165,7 @@ public final class DoubleExplicitBucketHistogramAggregator
       this.boundaries = boundaries;
       this.recordMinMax = recordMinMax;
       int bucketCount = boundaries.length + 1;
-      this.base = new Cell(bucketCount);
+      this.baseCounts = new long[bucketCount];
       this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
         this.reusablePoint = new MutableHistogramPointData(bucketCount);
@@ -174,39 +187,44 @@ public final class DoubleExplicitBucketHistogramAggregator
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
       Cell[] cs = cells;
       if (cs == null) {
-        // Uncontended fast path: try base without blocking.
-        if (base.lock.tryLock()) {
+        // Uncontended fast path: single CAS on baseLockState.
+        if (BASE_LOCK.compareAndSet(this, 0, 1)) {
           try {
-            updateCell(base, value, bucketIndex);
+            baseSum += value;
+            if (recordMinMax) {
+              if (value < baseMin) {
+                baseMin = value;
+              }
+              if (value > baseMax) {
+                baseMax = value;
+              }
+            }
+            baseCounts[bucketIndex]++;
             return;
           } finally {
-            base.lock.unlock();
+            baseLockState = 0; // volatile store releases the spinlock
           }
         }
-        // tryLock() failed: another recorder holds base. Escalate to cells (once).
+        // CAS failed: another thread holds baseLockState. Escalate to cells (once).
         cs = escalate();
       }
       // Post-escalation path: route by thread id and block on the chosen cell if necessary.
       Cell cell = cs[Math.abs((int) (Thread.currentThread().getId() % cs.length))];
       cell.lock.lock();
       try {
-        updateCell(cell, value, bucketIndex);
+        cell.sum += value;
+        if (recordMinMax) {
+          if (value < cell.min) {
+            cell.min = value;
+          }
+          if (value > cell.max) {
+            cell.max = value;
+          }
+        }
+        cell.counts[bucketIndex]++;
       } finally {
         cell.lock.unlock();
       }
-    }
-
-    private void updateCell(Cell cell, double value, int bucketIndex) {
-      cell.sum += value;
-      if (recordMinMax) {
-        if (value < cell.min) {
-          cell.min = value;
-        }
-        if (value > cell.max) {
-          cell.max = value;
-        }
-      }
-      cell.counts[bucketIndex]++;
     }
 
     /**
@@ -232,6 +250,17 @@ public final class DoubleExplicitBucketHistogramAggregator
       return Objects.requireNonNull(cells, "cells");
     }
 
+    /**
+     * Blocking-acquire the base spinlock. Only used by the collect path, which runs infrequently
+     * and holds the lock for a short (bounded by bucket count) critical section. A plain busy-spin
+     * is adequate here; Thread.onSpinWait is Java 9+, so we don't hint the CPU.
+     */
+    private void lockBase() {
+      while (!BASE_LOCK.compareAndSet(this, 0, 1)) {
+        // busy spin
+      }
+    }
+
     @Override
     protected HistogramPointData doAggregateThenMaybeResetDoubles(
         long startEpochNanos,
@@ -241,7 +270,7 @@ public final class DoubleExplicitBucketHistogramAggregator
         boolean reset) {
       // Acquire base + all cell locks for a consistent cross-cell snapshot. Recorders on this
       // series are paused for the duration of the merge; the merge is O(cells * buckets).
-      base.lock.lock();
+      lockBase();
       Cell[] cs = cells;
       if (cs != null) {
         for (Cell c : cs) {
@@ -256,22 +285,25 @@ public final class DoubleExplicitBucketHistogramAggregator
         double max = -1;
 
         // Merge base.
-        sum += base.sum;
+        sum += baseSum;
         if (recordMinMax) {
-          if (base.min < min) {
-            min = base.min;
+          if (baseMin < min) {
+            min = baseMin;
           }
-          if (base.max > max) {
-            max = base.max;
+          if (baseMax > max) {
+            max = baseMax;
           }
         }
-        for (int i = 0; i < base.counts.length; i++) {
-          long c = base.counts[i];
+        for (int i = 0; i < baseCounts.length; i++) {
+          long c = baseCounts[i];
           countsScratch[i] += c;
           count += c;
         }
         if (reset) {
-          resetCell(base);
+          baseSum = 0;
+          baseMin = Double.MAX_VALUE;
+          baseMax = -1;
+          Arrays.fill(baseCounts, 0);
         }
 
         // Merge cells if escalated.
@@ -334,7 +366,7 @@ public final class DoubleExplicitBucketHistogramAggregator
             c.lock.unlock();
           }
         }
-        base.lock.unlock();
+        baseLockState = 0; // volatile store releases the spinlock
       }
     }
 
@@ -346,9 +378,9 @@ public final class DoubleExplicitBucketHistogramAggregator
     }
 
     /**
-     * One shard of a striped histogram. All mutable fields are guarded by {@link #lock}. Fields are
-     * package-private so that {@link Handle} can read them directly during merge without incurring
-     * accessor overhead.
+     * One shard of a striped histogram, used only after escalation. All mutable fields are guarded
+     * by {@link #lock}. Fields are package-private so that {@link Handle} can read them directly
+     * during merge without incurring accessor overhead.
      */
     private static final class Cell {
       final ReentrantLock lock = new ReentrantLock();
