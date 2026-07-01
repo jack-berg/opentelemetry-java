@@ -6,7 +6,6 @@
 package io.opentelemetry.sdk.metrics.internal.aggregator;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.internal.GuardedBy;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.common.export.MemoryMode;
@@ -27,6 +26,9 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.Nullable;
 
 /**
@@ -93,6 +95,24 @@ public final class DoubleExplicitBucketHistogramAggregator
         ImmutableHistogramData.create(temporality, pointData));
   }
 
+  /**
+   * Adaptive-striping histogram handle.
+   *
+   * <p>Starts with a single {@link Cell} ({@link #base}) guarded by its own {@link ReentrantLock}.
+   * The record path uses {@code tryLock()} on the base cell; the first time it fails (i.e., the
+   * first observed contention), the handle allocates a fixed-size cells array (one slot per CPU)
+   * and from then on routes recorders to a cell chosen by thread id. Each cell has its own lock, so
+   * recorders can proceed in parallel across cells.
+   *
+   * <p>Uncontended workloads never allocate {@link #cells} and pay only one {@code tryLock} +
+   * primitive field updates + unlock per record, on par with the previous {@code synchronized}
+   * implementation. Contended workloads pay one probe + one cell lock acquire, with contention
+   * distributed across {@code Runtime.getRuntime().availableProcessors()} cells.
+   *
+   * <p>Collection acquires base and all cell locks in turn for a consistent cross-cell snapshot and
+   * then merges: sums are added, min/max are reduced, per-bucket counts are summed. Total {@code
+   * count} is derived from the sum of the bucket counts, saving a per-record field write.
+   */
   static final class Handle extends AggregatorHandle<HistogramPointData> {
     // read-only
     private final List<Double> boundaryList;
@@ -100,25 +120,25 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final double[] boundaries;
     private final boolean recordMinMax;
 
-    private final Object lock = new Object();
+    // Always present. Serves both as the uncontended fast-path target and as the merge sink at
+    // collect time.
+    private final Cell base;
 
-    @GuardedBy("lock")
-    private double sum;
+    // Null until the first tryLock() failure on base. Installed once via CAS and never resized or
+    // cleared. Reads are volatile via the field declaration.
+    @SuppressWarnings("UnusedVariable")
+    @Nullable
+    private volatile Cell[] cells;
 
-    @GuardedBy("lock")
-    private double min;
-
-    @GuardedBy("lock")
-    private double max;
-
-    @GuardedBy("lock")
-    private long count;
-
-    @GuardedBy("lock")
-    private final long[] counts;
+    // Scratch buffer used during collection to accumulate merged bucket counts before wrapping
+    // into a point. Not touched on the record path.
+    private final long[] countsScratch;
 
     // Used only when MemoryMode = REUSABLE_DATA
     @Nullable private final MutableHistogramPointData reusablePoint;
+
+    private static final AtomicReferenceFieldUpdater<Handle, Cell[]> CELLS =
+        AtomicReferenceFieldUpdater.newUpdater(Handle.class, Cell[].class, "cells");
 
     Handle(
         long creationEpochNanos,
@@ -131,13 +151,11 @@ public final class DoubleExplicitBucketHistogramAggregator
       this.boundaryList = boundaryList;
       this.boundaries = boundaries;
       this.recordMinMax = recordMinMax;
-      this.counts = new long[this.boundaries.length + 1];
-      this.sum = 0;
-      this.min = Double.MAX_VALUE;
-      this.max = -1;
-      this.count = 0;
+      int bucketCount = boundaries.length + 1;
+      this.base = new Cell(bucketCount);
+      this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
-        this.reusablePoint = new MutableHistogramPointData(counts.length);
+        this.reusablePoint = new MutableHistogramPointData(bucketCount);
       } else {
         this.reusablePoint = null;
       }
@@ -152,13 +170,133 @@ public final class DoubleExplicitBucketHistogramAggregator
     }
 
     @Override
+    protected void doRecordDouble(double value) {
+      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+      Cell[] cs = cells;
+      if (cs == null) {
+        // Uncontended fast path: try base without blocking.
+        if (base.lock.tryLock()) {
+          try {
+            updateCell(base, value, bucketIndex);
+            return;
+          } finally {
+            base.lock.unlock();
+          }
+        }
+        // tryLock() failed: another recorder holds base. Escalate to cells (once).
+        cs = escalate();
+      }
+      // Post-escalation path: route by thread id and block on the chosen cell if necessary.
+      Cell cell = cs[Math.abs((int) (Thread.currentThread().getId() % cs.length))];
+      cell.lock.lock();
+      try {
+        updateCell(cell, value, bucketIndex);
+      } finally {
+        cell.lock.unlock();
+      }
+    }
+
+    private void updateCell(Cell cell, double value, int bucketIndex) {
+      cell.sum += value;
+      if (recordMinMax) {
+        if (value < cell.min) {
+          cell.min = value;
+        }
+        if (value > cell.max) {
+          cell.max = value;
+        }
+      }
+      cell.counts[bucketIndex]++;
+    }
+
+    /**
+     * Install a fresh cells array via CAS. One-shot: if this thread loses the race, it uses the
+     * winning thread's array instead. Never grows or reclaims.
+     */
+    private Cell[] escalate() {
+      Cell[] existing = cells;
+      if (existing != null) {
+        return existing;
+      }
+      int n = Runtime.getRuntime().availableProcessors();
+      Cell[] fresh = new Cell[n];
+      int bucketCount = boundaries.length + 1;
+      for (int i = 0; i < n; i++) {
+        fresh[i] = new Cell(bucketCount);
+      }
+      if (CELLS.compareAndSet(this, null, fresh)) {
+        return fresh;
+      }
+      // Lost the race; a concurrent recorder installed cells first. The CAS only failed because
+      // cells is now non-null, so requireNonNull is safe.
+      return Objects.requireNonNull(cells, "cells");
+    }
+
+    @Override
     protected HistogramPointData doAggregateThenMaybeResetDoubles(
         long startEpochNanos,
         long epochNanos,
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      synchronized (lock) {
+      // Acquire base + all cell locks for a consistent cross-cell snapshot. Recorders on this
+      // series are paused for the duration of the merge; the merge is O(cells * buckets).
+      base.lock.lock();
+      Cell[] cs = cells;
+      if (cs != null) {
+        for (Cell c : cs) {
+          c.lock.lock();
+        }
+      }
+      try {
+        Arrays.fill(countsScratch, 0);
+        double sum = 0;
+        long count = 0;
+        double min = Double.MAX_VALUE;
+        double max = -1;
+
+        // Merge base.
+        sum += base.sum;
+        if (recordMinMax) {
+          if (base.min < min) {
+            min = base.min;
+          }
+          if (base.max > max) {
+            max = base.max;
+          }
+        }
+        for (int i = 0; i < base.counts.length; i++) {
+          long c = base.counts[i];
+          countsScratch[i] += c;
+          count += c;
+        }
+        if (reset) {
+          resetCell(base);
+        }
+
+        // Merge cells if escalated.
+        if (cs != null) {
+          for (Cell cell : cs) {
+            sum += cell.sum;
+            if (recordMinMax) {
+              if (cell.min < min) {
+                min = cell.min;
+              }
+              if (cell.max > max) {
+                max = cell.max;
+              }
+            }
+            for (int i = 0; i < cell.counts.length; i++) {
+              long c = cell.counts[i];
+              countsScratch[i] += c;
+              count += c;
+            }
+            if (reset) {
+              resetCell(cell);
+            }
+          }
+        }
+
         HistogramPointData pointData;
         if (reusablePoint == null) {
           pointData =
@@ -167,12 +305,12 @@ public final class DoubleExplicitBucketHistogramAggregator
                   epochNanos,
                   attributes,
                   sum,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.min : 0,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.max : 0,
+                  recordMinMax && count > 0,
+                  recordMinMax ? min : 0,
+                  recordMinMax && count > 0,
+                  recordMinMax ? max : 0,
                   boundaryList,
-                  PrimitiveLongList.wrap(Arrays.copyOf(counts, counts.length)),
+                  PrimitiveLongList.wrap(Arrays.copyOf(countsScratch, countsScratch.length)),
                   exemplars);
         } else /* REUSABLE_DATA */ {
           pointData =
@@ -181,37 +319,46 @@ public final class DoubleExplicitBucketHistogramAggregator
                   epochNanos,
                   attributes,
                   sum,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.min : 0,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.max : 0,
+                  recordMinMax && count > 0,
+                  recordMinMax ? min : 0,
+                  recordMinMax && count > 0,
+                  recordMinMax ? max : 0,
                   boundaryList,
-                  counts,
+                  countsScratch,
                   exemplars);
         }
-        if (reset) {
-          this.sum = 0;
-          this.min = Double.MAX_VALUE;
-          this.max = -1;
-          this.count = 0;
-          Arrays.fill(this.counts, 0);
-        }
         return pointData;
+      } finally {
+        if (cs != null) {
+          for (Cell c : cs) {
+            c.lock.unlock();
+          }
+        }
+        base.lock.unlock();
       }
     }
 
-    @Override
-    protected void doRecordDouble(double value) {
-      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+    private static void resetCell(Cell cell) {
+      cell.sum = 0;
+      cell.min = Double.MAX_VALUE;
+      cell.max = -1;
+      Arrays.fill(cell.counts, 0);
+    }
 
-      synchronized (lock) {
-        this.sum += value;
-        if (recordMinMax) {
-          this.min = Math.min(this.min, value);
-          this.max = Math.max(this.max, value);
-        }
-        this.count++;
-        this.counts[bucketIndex]++;
+    /**
+     * One shard of a striped histogram. All mutable fields are guarded by {@link #lock}. Fields are
+     * package-private so that {@link Handle} can read them directly during merge without incurring
+     * accessor overhead.
+     */
+    private static final class Cell {
+      final ReentrantLock lock = new ReentrantLock();
+      final long[] counts;
+      double sum;
+      double min = Double.MAX_VALUE;
+      double max = -1;
+
+      Cell(int buckets) {
+        this.counts = new long[buckets];
       }
     }
   }
