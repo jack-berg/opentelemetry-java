@@ -23,8 +23,8 @@ import io.opentelemetry.api.trace.TraceId;
 import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.common.internal.ArrayBackedAttributesBuilder;
 import io.opentelemetry.sdk.common.internal.AttributeUtil;
-import io.opentelemetry.sdk.common.internal.AttributesMap;
 import io.opentelemetry.sdk.trace.data.LinkData;
 import io.opentelemetry.sdk.trace.samplers.SamplingDecision;
 import io.opentelemetry.sdk.trace.samplers.SamplingResult;
@@ -56,7 +56,7 @@ class SdkSpanBuilder implements SpanBuilder {
 
   @Nullable private Context parent; // null means: Use current context.
   private SpanKind spanKind = SpanKind.INTERNAL;
-  @Nullable private AttributesMap attributes;
+  @Nullable private ArrayBackedAttributesBuilder attributes;
   @Nullable private List<LinkData> links;
   private int totalNumberOfLinksAdded = 0;
   private long startEpochNanos = 0;
@@ -250,12 +250,12 @@ class SdkSpanBuilder implements SpanBuilder {
     }
     Attributes samplingAttributes = samplingResult.getAttributes();
     if (!samplingAttributes.isEmpty()) {
-      samplingAttributes.forEach((key, value) -> attributes().put((AttributeKey) key, value));
+      attributes().putAll(samplingAttributes);
     }
 
     // Avoid any possibility to modify the attributes by adding attributes to the Builder after the
     // startSpan is called. If that happens all the attributes will be added in a new map.
-    AttributesMap recordedAttributes = attributes;
+    ArrayBackedAttributesBuilder recordedAttributes = attributes;
     attributes = null;
 
     return SdkSpan.startSpan(
@@ -277,11 +277,11 @@ class SdkSpanBuilder implements SpanBuilder {
         recordEndSpanMetrics);
   }
 
-  private AttributesMap attributes() {
-    AttributesMap attributes = this.attributes;
+  private ArrayBackedAttributesBuilder attributes() {
+    ArrayBackedAttributesBuilder attributes = this.attributes;
     if (attributes == null) {
       this.attributes =
-          AttributesMap.create(
+          ArrayBackedAttributesBuilder.create(
               spanLimits.getMaxNumberOfAttributes(), spanLimits.getMaxAttributeValueLength());
       attributes = this.attributes;
     }

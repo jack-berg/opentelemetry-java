@@ -16,8 +16,8 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.Clock;
 import io.opentelemetry.sdk.common.InstrumentationLibraryInfo;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.common.internal.ArrayBackedAttributesBuilder;
 import io.opentelemetry.sdk.common.internal.AttributeUtil;
-import io.opentelemetry.sdk.common.internal.AttributesMap;
 import io.opentelemetry.sdk.common.internal.ExceptionAttributeResolver;
 import io.opentelemetry.sdk.common.internal.InstrumentationScopeUtil;
 import io.opentelemetry.sdk.resources.Resource;
@@ -74,7 +74,7 @@ final class SdkSpan implements ReadWriteSpan {
   // Set of recorded attributes. DO NOT CALL any other method that changes the ordering of events.
   @GuardedBy("lock")
   @Nullable
-  private AttributesMap attributes;
+  private ArrayBackedAttributesBuilder attributes;
 
   // List of recorded events.
   @GuardedBy("lock")
@@ -133,7 +133,7 @@ final class SdkSpan implements ReadWriteSpan {
       ExceptionAttributeResolver exceptionAttributeResolver,
       AnchoredClock clock,
       Resource resource,
-      @Nullable AttributesMap attributes,
+      @Nullable ArrayBackedAttributesBuilder attributes,
       @Nullable List<LinkData> links,
       int totalRecordedLinks,
       long startEpochNanos,
@@ -184,7 +184,7 @@ final class SdkSpan implements ReadWriteSpan {
       ExceptionAttributeResolver exceptionAttributeResolver,
       Clock tracerClock,
       Resource resource,
-      @Nullable AttributesMap attributes,
+      @Nullable ArrayBackedAttributesBuilder attributes,
       @Nullable List<LinkData> links,
       int totalRecordedLinks,
       long userStartEpochNanos,
@@ -341,7 +341,7 @@ final class SdkSpan implements ReadWriteSpan {
       }
       if (attributes == null) {
         attributes =
-            AttributesMap.create(
+            ArrayBackedAttributesBuilder.create(
                 spanLimits.getMaxNumberOfAttributes(), spanLimits.getMaxAttributeValueLength());
       }
 
@@ -483,14 +483,14 @@ final class SdkSpan implements ReadWriteSpan {
     }
 
     int maxAttributeLength = spanLimits.getMaxAttributeValueLength();
-    AttributesMap attributes =
-        AttributesMap.create(
+    ArrayBackedAttributesBuilder attributes =
+        ArrayBackedAttributesBuilder.create(
             spanLimits.getMaxNumberOfAttributes(), spanLimits.getMaxAttributeValueLength());
 
     exceptionAttributeResolver.setExceptionAttributes(
         attributes::putIfCapacity, exception, maxAttributeLength);
 
-    additionalAttributes.forEach(attributes::put);
+    attributes.putAll(additionalAttributes);
 
     addTimedEvent(
         ExceptionEventData.create(

@@ -53,7 +53,7 @@ public interface ExceptionAttributeResolver {
    * guarantees are made.
    */
   // TODO(jack-berg): Consider promoting to opentelemetry and extending with Span, LogRecordBuilder,
-  // AttributeBuilder, AttributesMap etc.
+  // AttributeBuilder, ArrayBackedAttributesBuilder etc.
   interface AttributeSetter {
     <T> void setAttribute(AttributeKey<T> key, @Nullable T value);
   }

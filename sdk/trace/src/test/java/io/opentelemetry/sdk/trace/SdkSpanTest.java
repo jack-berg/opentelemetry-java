@@ -40,7 +40,7 @@ import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
-import io.opentelemetry.sdk.common.internal.AttributesMap;
+import io.opentelemetry.sdk.common.internal.ArrayBackedAttributesBuilder;
 import io.opentelemetry.sdk.common.internal.ExceptionAttributeResolver;
 import io.opentelemetry.sdk.common.internal.InstrumentationScopeUtil;
 import io.opentelemetry.sdk.resources.Resource;
@@ -1407,7 +1407,7 @@ class SdkSpanTest {
             ExceptionAttributeResolver.getDefault(),
             testClock,
             resource,
-            AttributesMap.create(
+            ArrayBackedAttributesBuilder.create(
                 spanLimits.getMaxNumberOfAttributes(), spanLimits.getMaxAttributeValueLength()),
             Collections.emptyList(),
             1,
@@ -1485,8 +1485,8 @@ class SdkSpanTest {
 
   private SdkSpan createTestSpanWithAttributes(Map<AttributeKey, Object> attributes) {
     SpanLimits spanLimits = SpanLimits.getDefault();
-    AttributesMap attributesMap =
-        AttributesMap.create(
+    ArrayBackedAttributesBuilder attributesMap =
+        ArrayBackedAttributesBuilder.create(
             spanLimits.getMaxNumberOfAttributes(), spanLimits.getMaxAttributeValueLength());
     attributes.forEach(attributesMap::put);
     return createTestSpan(
@@ -1532,7 +1532,7 @@ class SdkSpanTest {
       SpanKind kind,
       SpanLimits config,
       @Nullable String parentSpanId,
-      @Nullable AttributesMap attributes,
+      @Nullable ArrayBackedAttributesBuilder attributes,
       @Nullable List<LinkData> links,
       ExceptionAttributeResolver exceptionAttributeResolver) {
     List<LinkData> linksCopy = links == null ? new ArrayList<>() : new ArrayList<>(links);
@@ -1618,8 +1618,9 @@ class SdkSpanTest {
     TestClock clock = TestClock.create();
     Resource resource = this.resource;
     Attributes attributes = TestUtils.generateRandomAttributes();
-    AttributesMap attributesWithCapacity = AttributesMap.create(32, Integer.MAX_VALUE);
-    attributes.forEach(attributesWithCapacity::put);
+    ArrayBackedAttributesBuilder attributesWithCapacity =
+        ArrayBackedAttributesBuilder.create(32, Integer.MAX_VALUE);
+    attributesWithCapacity.putAll(attributes);
     Attributes event1Attributes = TestUtils.generateRandomAttributes();
     Attributes event2Attributes = TestUtils.generateRandomAttributes();
     SpanContext context =

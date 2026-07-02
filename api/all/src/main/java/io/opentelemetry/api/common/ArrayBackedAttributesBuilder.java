@@ -14,21 +14,89 @@ import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringArrayKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
 
+import io.opentelemetry.api.internal.AttributeLengthLimits;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
-class ArrayBackedAttributesBuilder implements AttributesBuilder {
+/**
+ * The default {@link AttributesBuilder} implementation.
+ *
+ * <p>Storage is a flat {@link List} of alternating {@link AttributeKey}/value pairs. In the default
+ * unlimited configuration, {@link #put} appends without dedup and defers dedup/sort to {@link
+ * #build()}. When constructed with capacity and length limits (used by the SDK to record span/log
+ * attributes), {@link #put} enforces last-value-wins by key <em>name</em> (regardless of type) on
+ * the fly, truncates over-length values, and drops entries beyond the capacity.
+ *
+ * <p>Also implements {@link Attributes} so that a limits-configured instance can be exposed as a
+ * live, mutable {@link Attributes} view without allocating a snapshot. Callers using the class as
+ * the default {@link AttributesBuilder} never see this: the returned type is {@link
+ * AttributesBuilder}.
+ *
+ * <p>Yes, a class implementing both a builder interface and its result-immutable interface is
+ * unusual. It exists to let the SDK copy of this class (see {@code :sdk:common}'s Gradle build)
+ * serve as {@code AttributesMap}'s replacement without allocating a separate {@link Attributes}
+ * view on every read. The api-side (unlimited) users of this class only reference it through the
+ * {@link AttributesBuilder} interface and never see the {@link Attributes} methods.
+ */
+@SuppressWarnings("BuilderReturnThis") // Also implements Attributes; not all methods return this.
+class ArrayBackedAttributesBuilder implements AttributesBuilder, Attributes {
   private final List<Object> data;
 
+  /** Max number of unique entries. {@link Integer#MAX_VALUE} means unlimited. */
+  private final int capacity;
+
+  /**
+   * Max length of string / string-array values. {@link Integer#MAX_VALUE} means unlimited. Only
+   * consulted on the limited put path.
+   */
+  private final int lengthLimit;
+
+  /** Count of put-with-non-null-value attempts (only incremented on the limited put path). */
+  private int totalAddedValues;
+
+  /** Count of non-null pairs currently stored. */
+  private int size;
+
   ArrayBackedAttributesBuilder() {
-    data = new ArrayList<>();
+    this(new ArrayList<>(), Integer.MAX_VALUE, Integer.MAX_VALUE, 0);
   }
 
   ArrayBackedAttributesBuilder(List<Object> data) {
+    this(data, Integer.MAX_VALUE, Integer.MAX_VALUE, data.size() / 2);
+  }
+
+  private ArrayBackedAttributesBuilder(
+      List<Object> data, int capacity, int lengthLimit, int initialSize) {
     this.data = data;
+    this.capacity = capacity;
+    this.lengthLimit = lengthLimit;
+    this.size = initialSize;
+  }
+
+  /**
+   * Create a limits-enforcing builder. The resulting instance also implements {@link Attributes}
+   * and can be exposed as a live view.
+   *
+   * @param capacity max number of unique attributes; further additions are dropped
+   * @param lengthLimit max length of string / string-array values; longer values are truncated
+   */
+  // NOTE: public so that the copy of this class in sdk-common (see :sdk:common's Gradle build)
+  // exposes it across packages. Safe here because this class is package-private in api.common,
+  // so external api users cannot reach this factory.
+  public static ArrayBackedAttributesBuilder create(long capacity, int lengthLimit) {
+    int cap = (int) Math.min(capacity, (long) Integer.MAX_VALUE);
+    return new ArrayBackedAttributesBuilder(new ArrayList<>(), cap, lengthLimit, 0);
+  }
+
+  private boolean isLimited() {
+    return capacity != Integer.MAX_VALUE || lengthLimit != Integer.MAX_VALUE;
   }
 
   @Override
@@ -55,8 +123,7 @@ class ArrayBackedAttributesBuilder implements AttributesBuilder {
       putValue(key, (Value<?>) value);
       return this;
     }
-    data.add(key);
-    data.add(value);
+    addPair(key, value);
     return this;
   }
 
@@ -111,8 +178,7 @@ class ArrayBackedAttributesBuilder implements AttributesBuilder {
             return;
           case VALUE:
             // Not coercible (empty, non-homogeneous, or unsupported element type)
-            data.add(key);
-            data.add(valueObj);
+            addPair(key, valueObj);
             return;
           default:
             throw new IllegalArgumentException("Unexpected array attribute type: " + attributeType);
@@ -121,9 +187,53 @@ class ArrayBackedAttributesBuilder implements AttributesBuilder {
       case BYTES:
       case EMPTY:
         // Keep as VALUE type
-        data.add(key);
-        data.add(valueObj);
+        addPair(key, valueObj);
     }
+  }
+
+  /**
+   * Store the given key/value pair. In unlimited mode: append. In limited mode: dedup by name,
+   * truncate over-length values, and enforce capacity.
+   */
+  private void addPair(AttributeKey<?> key, Object value) {
+    if (!isLimited()) {
+      data.add(key);
+      data.add(value);
+      size++;
+      return;
+    }
+    totalAddedValues++;
+    Object limited =
+        lengthLimit == Integer.MAX_VALUE
+            ? value
+            : AttributeLengthLimits.applyAttributeLengthLimit(value, lengthLimit);
+    String name = key.getKey();
+    int emptySlot = -1;
+    for (int i = 0; i < data.size(); i += 2) {
+      Object existing = data.get(i);
+      if (existing == null) {
+        if (emptySlot < 0) {
+          emptySlot = i;
+        }
+        continue;
+      }
+      if (((AttributeKey<?>) existing).getKey().equals(name)) {
+        data.set(i, key);
+        data.set(i + 1, limited);
+        return;
+      }
+    }
+    if (size >= capacity) {
+      return;
+    }
+    if (emptySlot >= 0) {
+      data.set(emptySlot, key);
+      data.set(emptySlot + 1, limited);
+    } else {
+      data.add(key);
+      data.add(limited);
+    }
+    size++;
   }
 
   /**
@@ -191,9 +301,141 @@ class ArrayBackedAttributesBuilder implements AttributesBuilder {
         // null items are filtered out in ArrayBackedAttributes
         data.set(i, null);
         data.set(i + 1, null);
+        size--;
       }
     }
     return this;
+  }
+
+  // ---- SDK-facing helpers (used by the copied class in sdk/common). Public so the copy exposes
+  // them across packages; the api-side class is package-private so these do not leak. ----
+
+  /** Count of {@link #put} attempts with a non-null value, including those dropped by capacity. */
+  public int getTotalAddedValues() {
+    return totalAddedValues;
+  }
+
+  /** Typed put convenience for callers with an already-typed {@link AttributeKey}. */
+  public <T> void putIfCapacity(AttributeKey<T> key, @Nullable T value) {
+    put(key, value);
+  }
+
+  /** Snapshot the current state to an immutable {@link Attributes}. */
+  public Attributes immutableCopy() {
+    return build();
+  }
+
+  // ---- Attributes implementation (only meaningful in limited/live mode) ----
+
+  @SuppressWarnings("unchecked")
+  @Override
+  @Nullable
+  public <T> T get(AttributeKey<T> key) {
+    if (key == null) {
+      return null;
+    }
+    for (int i = 0; i < data.size(); i += 2) {
+      Object entryKey = data.get(i);
+      if (key.equals(entryKey)) {
+        return (T) data.get(i + 1);
+      }
+    }
+    return null;
+  }
+
+  @Override
+  public int size() {
+    return size;
+  }
+
+  @Override
+  public boolean isEmpty() {
+    return size == 0;
+  }
+
+  @Override
+  public void forEach(BiConsumer<? super AttributeKey<?>, ? super Object> consumer) {
+    if (consumer == null) {
+      return;
+    }
+    for (int i = 0; i < data.size(); i += 2) {
+      Object entryKey = data.get(i);
+      if (entryKey != null) {
+        consumer.accept((AttributeKey<?>) entryKey, data.get(i + 1));
+      }
+    }
+  }
+
+  @Override
+  public Map<AttributeKey<?>, Object> asMap() {
+    if (size == 0) {
+      return Collections.emptyMap();
+    }
+    Map<AttributeKey<?>, Object> snapshot = new HashMap<>(size);
+    for (int i = 0; i < data.size(); i += 2) {
+      Object entryKey = data.get(i);
+      if (entryKey != null) {
+        snapshot.put((AttributeKey<?>) entryKey, data.get(i + 1));
+      }
+    }
+    return Collections.unmodifiableMap(snapshot);
+  }
+
+  @Override
+  public AttributesBuilder toBuilder() {
+    // Always returns an unlimited builder. Limits do not carry over to the returned builder.
+    return Attributes.builder().putAll(this);
+  }
+
+  @Override
+  public boolean equals(@Nullable Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (!(o instanceof Attributes)) {
+      return false;
+    }
+    Attributes other = (Attributes) o;
+    if (other.size() != size) {
+      return false;
+    }
+    return asMap().equals(other.asMap());
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder("ArrayBackedAttributesBuilder{data={");
+    boolean first = true;
+    for (int i = 0; i < data.size(); i += 2) {
+      Object entryKey = data.get(i);
+      if (entryKey == null) {
+        continue;
+      }
+      if (!first) {
+        sb.append(", ");
+      }
+      first = false;
+      sb.append(entryKey).append('=').append(data.get(i + 1));
+    }
+    sb.append("}, capacity=")
+        .append(capacity)
+        .append(", totalAddedValues=")
+        .append(totalAddedValues)
+        .append('}');
+    return sb.toString();
+  }
+
+  @Override
+  public int hashCode() {
+    // Consistent with Map.hashCode semantics (matches AbstractMap-based Attributes impls).
+    int h = 0;
+    for (int i = 0; i < data.size(); i += 2) {
+      Object entryKey = data.get(i);
+      if (entryKey != null) {
+        h += entryKey.hashCode() ^ data.get(i + 1).hashCode();
+      }
+    }
+    return h;
   }
 
   static List<Double> toList(double... values) {
