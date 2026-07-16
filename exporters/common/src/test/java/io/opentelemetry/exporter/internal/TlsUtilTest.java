@@ -87,12 +87,7 @@ class TlsUtilTest {
   }
 
   @Test
-  void defaultTrustManager() {
-    assertThatCode(TlsUtil::defaultTrustManager).doesNotThrowAnyException();
-  }
-
-  @Test
-  void defaultTrustManager_returnsX509TrustManager() throws Exception {
+  void defaultTrustManager() throws Exception {
     assertThat(TlsUtil.defaultTrustManager()).isInstanceOf(X509TrustManager.class);
   }
 

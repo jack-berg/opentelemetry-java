@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### SDK
+
+#### Exporters
+
+* OTLP: Fix OkHttp HTTP sender dropping client certificates when mTLS is configured without custom trusted certificates
+  ([#8565](https://github.com/open-telemetry/opentelemetry-java/pull/8565))
+
 ## Version 1.64.0 (2026-07-10)
 
 ### API
