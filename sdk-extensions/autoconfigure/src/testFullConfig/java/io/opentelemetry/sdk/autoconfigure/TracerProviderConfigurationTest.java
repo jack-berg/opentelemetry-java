@@ -17,8 +17,6 @@ import io.opentelemetry.sdk.autoconfigure.spi.ConfigurationException;
 import io.opentelemetry.sdk.autoconfigure.spi.internal.DefaultConfigProperties;
 import io.opentelemetry.sdk.extension.trace.jaeger.sampler.JaegerRemoteSampler;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
-import java.io.Closeable;
-import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Collections;
@@ -69,16 +67,13 @@ public class TracerProviderConfigurationTest {
   @Test
   @SuppressLogger(JaegerRemoteSampler.class)
   void configureSampler_JaegerRemoteSampler() throws Exception {
-    Sampler sampler =
+    try (Sampler sampler =
         TracerProviderConfiguration.configureSampler(
             "parentbased_jaeger_remote",
             DefaultConfigProperties.createFromMap(Collections.emptyMap()),
-            spiHelper);
-    assertThat(sampler.getClass().getSimpleName()).isEqualTo("ParentBasedSampler");
-    assertThat(sampler).extracting("root").isInstanceOf(JaegerRemoteSampler.class);
-    // Close the inner JaegerRemoteSampler to shut down its background thread.
-    Field rootField = sampler.getClass().getDeclaredField("root");
-    rootField.setAccessible(true);
-    ((Closeable) rootField.get(sampler)).close();
+            spiHelper)) {
+      assertThat(sampler.getClass().getSimpleName()).isEqualTo("ParentBasedSampler");
+      assertThat(sampler).extracting("root").isInstanceOf(JaegerRemoteSampler.class);
+    }
   }
 }
