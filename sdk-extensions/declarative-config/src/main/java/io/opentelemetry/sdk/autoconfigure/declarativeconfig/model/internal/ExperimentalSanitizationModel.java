@@ -13,19 +13,23 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"url"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class ExperimentalSanitizationModel {
 
-  @JsonProperty("url")
-  @Nullable
-  private ExperimentalUrlSanitizationModel url;
+  @Nullable private ExperimentalUrlSanitizationModel url;
 
+  /**
+   * Configure URL sanitization options.
+   *
+   * <p>If omitted, defaults as described in ExperimentalUrlSanitization are used.
+   */
   @JsonProperty("url")
   @Nullable
   public ExperimentalUrlSanitizationModel getUrl() {
     return url;
   }
 
+  @JsonProperty("url")
   public ExperimentalSanitizationModel withUrl(ExperimentalUrlSanitizationModel url) {
     this.url = url;
     return this;

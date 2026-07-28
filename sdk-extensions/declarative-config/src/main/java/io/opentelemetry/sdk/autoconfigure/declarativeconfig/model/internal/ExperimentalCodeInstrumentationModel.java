@@ -13,19 +13,30 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"semconv"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class ExperimentalCodeInstrumentationModel {
 
-  @JsonProperty("semconv")
-  @Nullable
-  private ExperimentalSemconvConfigModel semconv;
+  @Nullable private ExperimentalSemconvConfigModel semconv;
 
+  /**
+   * Configure code semantic convention version and migration behavior.
+   *
+   * <p>This property takes precedence over the
+   * .instrumentation/development.general.stability_opt_in_list setting.
+   *
+   * <p>See code semantic conventions:
+   * https://opentelemetry.io/docs/specs/semconv/registry/attributes/code/
+   *
+   * <p>If omitted, uses the general stability_opt_in_list setting, or instrumentations continue
+   * emitting their default semantic convention version if not set.
+   */
   @JsonProperty("semconv")
   @Nullable
   public ExperimentalSemconvConfigModel getSemconv() {
     return semconv;
   }
 
+  @JsonProperty("semconv")
   public ExperimentalCodeInstrumentationModel withSemconv(ExperimentalSemconvConfigModel semconv) {
     this.semconv = semconv;
     return this;

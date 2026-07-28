@@ -13,21 +13,23 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"root"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class ExperimentalComposableParentThresholdSamplerModel {
 
-  /** (Required) */
-  @JsonProperty("root")
-  @Nullable
-  private ExperimentalComposableSamplerModel root;
+  @Nullable private ExperimentalComposableSamplerModel root;
 
-  /** (Required) */
+  /**
+   * Sampler to use when there is no parent.
+   *
+   * <p>Property is required and must be non-null.
+   */
   @JsonProperty("root")
   @Nullable
   public ExperimentalComposableSamplerModel getRoot() {
     return root;
   }
 
+  @JsonProperty("root")
   public ExperimentalComposableParentThresholdSamplerModel withRoot(
       ExperimentalComposableSamplerModel root) {
     this.root = root;

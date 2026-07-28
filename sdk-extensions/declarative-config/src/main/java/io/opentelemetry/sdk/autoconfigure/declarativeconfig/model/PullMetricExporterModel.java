@@ -7,7 +7,6 @@ package io.opentelemetry.sdk.autoconfigure.declarativeconfig.model;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
@@ -19,23 +18,25 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"prometheus/development"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class PullMetricExporterModel {
 
-  @JsonProperty("prometheus/development")
-  @Nullable
-  private ExperimentalPrometheusMetricExporterModel prometheusDevelopment;
-
-  @JsonIgnore
+  @Nullable private ExperimentalPrometheusMetricExporterModel prometheusDevelopment;
   private Map<String, PullMetricExporterPropertyModel> additionalProperties =
       new LinkedHashMap<String, PullMetricExporterPropertyModel>();
 
+  /**
+   * Configure exporter to be prometheus.
+   *
+   * <p>If omitted, ignore.
+   */
   @JsonProperty("prometheus/development")
   @Nullable
   public ExperimentalPrometheusMetricExporterModel getPrometheusDevelopment() {
     return prometheusDevelopment;
   }
 
+  @JsonProperty("prometheus/development")
   public PullMetricExporterModel withPrometheusDevelopment(
       ExperimentalPrometheusMetricExporterModel prometheusDevelopment) {
     this.prometheusDevelopment = prometheusDevelopment;
@@ -48,10 +49,6 @@ public class PullMetricExporterModel {
   }
 
   @JsonAnySetter
-  public void setAdditionalProperty(String name, PullMetricExporterPropertyModel value) {
-    this.additionalProperties.put(name, value);
-  }
-
   public PullMetricExporterModel withAdditionalProperty(
       String name, PullMetricExporterPropertyModel value) {
     this.additionalProperties.put(name, value);

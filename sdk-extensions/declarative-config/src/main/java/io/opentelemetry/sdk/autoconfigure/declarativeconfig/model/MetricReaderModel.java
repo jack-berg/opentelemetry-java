@@ -13,34 +13,41 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"periodic", "pull"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class MetricReaderModel {
 
-  @JsonProperty("periodic")
-  @Nullable
-  private PeriodicMetricReaderModel periodic;
+  @Nullable private PeriodicMetricReaderModel periodic;
+  @Nullable private PullMetricReaderModel pull;
 
-  @JsonProperty("pull")
-  @Nullable
-  private PullMetricReaderModel pull;
-
+  /**
+   * Configure a periodic metric reader.
+   *
+   * <p>If omitted, ignore.
+   */
   @JsonProperty("periodic")
   @Nullable
   public PeriodicMetricReaderModel getPeriodic() {
     return periodic;
   }
 
+  @JsonProperty("periodic")
   public MetricReaderModel withPeriodic(PeriodicMetricReaderModel periodic) {
     this.periodic = periodic;
     return this;
   }
 
+  /**
+   * Configure a pull based metric reader.
+   *
+   * <p>If omitted, ignore.
+   */
   @JsonProperty("pull")
   @Nullable
   public PullMetricReaderModel getPull() {
     return pull;
   }
 
+  @JsonProperty("pull")
   public MetricReaderModel withPull(PullMetricReaderModel pull) {
     this.pull = pull;
     return this;

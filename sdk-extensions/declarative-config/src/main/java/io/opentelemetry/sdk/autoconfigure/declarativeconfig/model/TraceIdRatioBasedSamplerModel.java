@@ -7,29 +7,29 @@ package io.opentelemetry.sdk.autoconfigure.declarativeconfig.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import javax.annotation.Generated;
 import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"ratio"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class TraceIdRatioBasedSamplerModel {
 
-  /** Configure trace_id_ratio. If omitted or null, 1.0 is used. */
-  @JsonProperty("ratio")
-  @JsonPropertyDescription("Configure trace_id_ratio.\nIf omitted or null, 1.0 is used.\n")
-  @Nullable
-  private Double ratio;
+  @Nullable private Double ratio;
 
-  /** Configure trace_id_ratio. If omitted or null, 1.0 is used. */
+  /**
+   * Configure trace_id_ratio.
+   *
+   * <p>If omitted or null, 1.0 is used.
+   */
   @JsonProperty("ratio")
   @Nullable
   public Double getRatio() {
     return ratio;
   }
 
+  @JsonProperty("ratio")
   public TraceIdRatioBasedSamplerModel withRatio(Double ratio) {
     this.ratio = ratio;
     return this;

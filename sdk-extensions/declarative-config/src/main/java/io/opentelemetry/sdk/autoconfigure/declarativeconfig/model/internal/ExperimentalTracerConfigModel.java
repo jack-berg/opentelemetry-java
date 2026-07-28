@@ -7,30 +7,29 @@ package io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.internal;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import javax.annotation.Generated;
 import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"enabled"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class ExperimentalTracerConfigModel {
 
-  /** Configure if the tracer is enabled or not. If omitted, true is used. */
-  @JsonProperty("enabled")
-  @JsonPropertyDescription(
-      "Configure if the tracer is enabled or not.\nIf omitted, true is used.\n")
-  @Nullable
-  private Boolean enabled;
+  @Nullable private Boolean enabled;
 
-  /** Configure if the tracer is enabled or not. If omitted, true is used. */
+  /**
+   * Configure if the tracer is enabled or not.
+   *
+   * <p>If omitted, true is used.
+   */
   @JsonProperty("enabled")
   @Nullable
   public Boolean getEnabled() {
     return enabled;
   }
 
+  @JsonProperty("enabled")
   public ExperimentalTracerConfigModel withEnabled(Boolean enabled) {
     this.enabled = enabled;
     return this;

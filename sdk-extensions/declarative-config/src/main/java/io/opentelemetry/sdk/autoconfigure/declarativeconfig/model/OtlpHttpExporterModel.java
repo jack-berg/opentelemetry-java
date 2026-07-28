@@ -5,15 +5,10 @@
 
 package io.opentelemetry.sdk.autoconfigure.declarativeconfig.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.fasterxml.jackson.annotation.JsonValue;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import javax.annotation.Generated;
 import javax.annotation.Nullable;
 
@@ -27,72 +22,22 @@ import javax.annotation.Nullable;
   "timeout",
   "encoding"
 })
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class OtlpHttpExporterModel {
 
-  /**
-   * Configure endpoint, including the signal specific path. If omitted or null, the
-   * http://localhost:4318/v1/{signal} (where signal is 'traces', 'logs', or 'metrics') is used.
-   */
-  @JsonProperty("endpoint")
-  @JsonPropertyDescription(
-      "Configure endpoint, including the signal specific path.\nIf omitted or null, the http://localhost:4318/v1/{signal} (where signal is 'traces', 'logs', or 'metrics') is used.\n")
-  @Nullable
-  private String endpoint;
-
-  @JsonProperty("tls")
-  @Nullable
-  private HttpTlsModel tls;
+  @Nullable private String endpoint;
+  @Nullable private HttpTlsModel tls;
+  @Nullable private List<NameStringValuePairModel> headers;
+  @Nullable private String headersList;
+  @Nullable private String compression;
+  @Nullable private Integer timeout;
+  @Nullable private OtlpHttpEncodingModel encoding;
 
   /**
-   * Configure headers. Entries have higher priority than entries from .headers_list. If an entry's
-   * .value is null, the entry is ignored. If omitted, no headers are added.
-   */
-  @JsonProperty("headers")
-  @JsonPropertyDescription(
-      "Configure headers. Entries have higher priority than entries from .headers_list.\nIf an entry's .value is null, the entry is ignored.\nIf omitted, no headers are added.\n")
-  @Nullable
-  private List<NameStringValuePairModel> headers;
-
-  /**
-   * Configure headers. Entries have lower priority than entries from .headers. The value is a list
-   * of comma separated key-value pairs matching the format of OTEL_EXPORTER_OTLP_HEADERS. See
-   * https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#configuration-options
-   * for details. If omitted or null, no headers are added.
-   */
-  @JsonProperty("headers_list")
-  @JsonPropertyDescription(
-      "Configure headers. Entries have lower priority than entries from .headers.\nThe value is a list of comma separated key-value pairs matching the format of OTEL_EXPORTER_OTLP_HEADERS. See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#configuration-options for details.\nIf omitted or null, no headers are added.\n")
-  @Nullable
-  private String headersList;
-
-  /**
-   * Configure compression. Known values include: gzip, none. Implementations may support other
-   * compression algorithms. If omitted or null, none is used.
-   */
-  @JsonProperty("compression")
-  @JsonPropertyDescription(
-      "Configure compression.\nKnown values include: gzip, none. Implementations may support other compression algorithms.\nIf omitted or null, none is used.\n")
-  @Nullable
-  private String compression;
-
-  /**
-   * Configure max time (in milliseconds) to wait for each export. Value must be non-negative. A
-   * value of 0 indicates no limit (infinity). If omitted or null, 10000 is used.
-   */
-  @JsonProperty("timeout")
-  @JsonPropertyDescription(
-      "Configure max time (in milliseconds) to wait for each export.\nValue must be non-negative. A value of 0 indicates no limit (infinity).\nIf omitted or null, 10000 is used.\n")
-  @Nullable
-  private Integer timeout;
-
-  @JsonProperty("encoding")
-  @Nullable
-  private OtlpHttpExporterModel.OtlpHttpEncoding encoding;
-
-  /**
-   * Configure endpoint, including the signal specific path. If omitted or null, the
-   * http://localhost:4318/v1/{signal} (where signal is 'traces', 'logs', or 'metrics') is used.
+   * Configure endpoint, including the signal specific path.
+   *
+   * <p>If omitted or null, the http://localhost:4318/v1/{signal} (where signal is 'traces', 'logs',
+   * or 'metrics') is used.
    */
   @JsonProperty("endpoint")
   @Nullable
@@ -100,25 +45,35 @@ public class OtlpHttpExporterModel {
     return endpoint;
   }
 
+  @JsonProperty("endpoint")
   public OtlpHttpExporterModel withEndpoint(String endpoint) {
     this.endpoint = endpoint;
     return this;
   }
 
+  /**
+   * Configure TLS settings for the exporter.
+   *
+   * <p>If omitted, system default TLS settings are used.
+   */
   @JsonProperty("tls")
   @Nullable
   public HttpTlsModel getTls() {
     return tls;
   }
 
+  @JsonProperty("tls")
   public OtlpHttpExporterModel withTls(HttpTlsModel tls) {
     this.tls = tls;
     return this;
   }
 
   /**
-   * Configure headers. Entries have higher priority than entries from .headers_list. If an entry's
-   * .value is null, the entry is ignored. If omitted, no headers are added.
+   * Configure headers. Entries have higher priority than entries from .headers_list.
+   *
+   * <p>If an entry's .value is null, the entry is ignored.
+   *
+   * <p>If omitted, no headers are added.
    */
   @JsonProperty("headers")
   @Nullable
@@ -126,16 +81,21 @@ public class OtlpHttpExporterModel {
     return headers;
   }
 
+  @JsonProperty("headers")
   public OtlpHttpExporterModel withHeaders(List<NameStringValuePairModel> headers) {
     this.headers = headers;
     return this;
   }
 
   /**
-   * Configure headers. Entries have lower priority than entries from .headers. The value is a list
-   * of comma separated key-value pairs matching the format of OTEL_EXPORTER_OTLP_HEADERS. See
+   * Configure headers. Entries have lower priority than entries from .headers.
+   *
+   * <p>The value is a list of comma separated key-value pairs matching the format of
+   * OTEL_EXPORTER_OTLP_HEADERS. See
    * https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#configuration-options
-   * for details. If omitted or null, no headers are added.
+   * for details.
+   *
+   * <p>If omitted or null, no headers are added.
    */
   @JsonProperty("headers_list")
   @Nullable
@@ -143,14 +103,18 @@ public class OtlpHttpExporterModel {
     return headersList;
   }
 
+  @JsonProperty("headers_list")
   public OtlpHttpExporterModel withHeadersList(String headersList) {
     this.headersList = headersList;
     return this;
   }
 
   /**
-   * Configure compression. Known values include: gzip, none. Implementations may support other
-   * compression algorithms. If omitted or null, none is used.
+   * Configure compression.
+   *
+   * <p>Known values include: gzip, none. Implementations may support other compression algorithms.
+   *
+   * <p>If omitted or null, none is used.
    */
   @JsonProperty("compression")
   @Nullable
@@ -158,14 +122,18 @@ public class OtlpHttpExporterModel {
     return compression;
   }
 
+  @JsonProperty("compression")
   public OtlpHttpExporterModel withCompression(String compression) {
     this.compression = compression;
     return this;
   }
 
   /**
-   * Configure max time (in milliseconds) to wait for each export. Value must be non-negative. A
-   * value of 0 indicates no limit (infinity). If omitted or null, 10000 is used.
+   * Configure max time (in milliseconds) to wait for each export.
+   *
+   * <p>Value must be non-negative. A value of 0 indicates no limit (infinity).
+   *
+   * <p>If omitted or null, 10000 is used.
    */
   @JsonProperty("timeout")
   @Nullable
@@ -173,18 +141,33 @@ public class OtlpHttpExporterModel {
     return timeout;
   }
 
+  @JsonProperty("timeout")
   public OtlpHttpExporterModel withTimeout(Integer timeout) {
     this.timeout = timeout;
     return this;
   }
 
+  /**
+   * Configure the encoding used for messages.
+   *
+   * <p>Implementations may not support json.
+   *
+   * <p>Values include:
+   *
+   * <p>* json: Protobuf JSON encoding.
+   *
+   * <p>* protobuf: Protobuf binary encoding.
+   *
+   * <p>If omitted, protobuf is used.
+   */
   @JsonProperty("encoding")
   @Nullable
-  public OtlpHttpExporterModel.OtlpHttpEncoding getEncoding() {
+  public OtlpHttpEncodingModel getEncoding() {
     return encoding;
   }
 
-  public OtlpHttpExporterModel withEncoding(OtlpHttpExporterModel.OtlpHttpEncoding encoding) {
+  @JsonProperty("encoding")
+  public OtlpHttpExporterModel withEncoding(OtlpHttpEncodingModel encoding) {
     this.encoding = encoding;
     return this;
   }
@@ -249,44 +232,5 @@ public class OtlpHttpExporterModel {
           && (this.encoding == null ? that.encoding == null : this.encoding.equals(that.encoding));
     }
     return false;
-  }
-
-  @Generated("jsonschema2pojo")
-  public enum OtlpHttpEncoding {
-    PROTOBUF("protobuf"),
-    JSON("json");
-    private final String value;
-    private static final Map<String, OtlpHttpExporterModel.OtlpHttpEncoding> CONSTANTS =
-        new HashMap<String, OtlpHttpExporterModel.OtlpHttpEncoding>();
-
-    static {
-      for (OtlpHttpExporterModel.OtlpHttpEncoding c : values()) {
-        CONSTANTS.put(c.value, c);
-      }
-    }
-
-    OtlpHttpEncoding(String value) {
-      this.value = value;
-    }
-
-    @Override
-    public String toString() {
-      return this.value;
-    }
-
-    @JsonValue
-    public String value() {
-      return this.value;
-    }
-
-    @JsonCreator
-    public static OtlpHttpExporterModel.OtlpHttpEncoding fromValue(String value) {
-      OtlpHttpExporterModel.OtlpHttpEncoding constant = CONSTANTS.get(value);
-      if (constant == null) {
-        throw new IllegalArgumentException(value);
-      } else {
-        return constant;
-      }
-    }
   }
 }

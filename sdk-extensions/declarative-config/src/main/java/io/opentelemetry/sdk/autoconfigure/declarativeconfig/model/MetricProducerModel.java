@@ -7,7 +7,6 @@ package io.opentelemetry.sdk.autoconfigure.declarativeconfig.model;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
@@ -18,23 +17,25 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"opencensus"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class MetricProducerModel {
 
-  @JsonProperty("opencensus")
-  @Nullable
-  private OpenCensusMetricProducerModel opencensus;
-
-  @JsonIgnore
+  @Nullable private OpenCensusMetricProducerModel opencensus;
   private Map<String, MetricProducerPropertyModel> additionalProperties =
       new LinkedHashMap<String, MetricProducerPropertyModel>();
 
+  /**
+   * Configure metric producer to be opencensus.
+   *
+   * <p>If omitted, ignore.
+   */
   @JsonProperty("opencensus")
   @Nullable
   public OpenCensusMetricProducerModel getOpencensus() {
     return opencensus;
   }
 
+  @JsonProperty("opencensus")
   public MetricProducerModel withOpencensus(OpenCensusMetricProducerModel opencensus) {
     this.opencensus = opencensus;
     return this;
@@ -46,10 +47,6 @@ public class MetricProducerModel {
   }
 
   @JsonAnySetter
-  public void setAdditionalProperty(String name, MetricProducerPropertyModel value) {
-    this.additionalProperties.put(name, value);
-  }
-
   public MetricProducerModel withAdditionalProperty(
       String name, MetricProducerPropertyModel value) {
     this.additionalProperties.put(name, value);

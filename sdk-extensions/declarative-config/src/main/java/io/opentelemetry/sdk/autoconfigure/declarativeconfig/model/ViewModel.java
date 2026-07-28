@@ -13,38 +13,44 @@ import javax.annotation.Nullable;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"selector", "stream"})
-@Generated("jsonschema2pojo")
+@Generated("io.opentelemetry.gradle.DeclarativeConfigPojoGenerator")
 public class ViewModel {
 
-  /** (Required) */
-  @JsonProperty("selector")
-  @Nullable
-  private ViewSelectorModel selector;
+  @Nullable private ViewSelectorModel selector;
+  @Nullable private ViewStreamModel stream;
 
-  /** (Required) */
-  @JsonProperty("stream")
-  @Nullable
-  private ViewStreamModel stream;
-
-  /** (Required) */
+  /**
+   * Configure view selector.
+   *
+   * <p>Selection criteria is additive as described in
+   * https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#instrument-selection-criteria.
+   *
+   * <p>Property is required and must be non-null.
+   */
   @JsonProperty("selector")
   @Nullable
   public ViewSelectorModel getSelector() {
     return selector;
   }
 
+  @JsonProperty("selector")
   public ViewModel withSelector(ViewSelectorModel selector) {
     this.selector = selector;
     return this;
   }
 
-  /** (Required) */
+  /**
+   * Configure view stream.
+   *
+   * <p>Property is required and must be non-null.
+   */
   @JsonProperty("stream")
   @Nullable
   public ViewStreamModel getStream() {
     return stream;
   }
 
+  @JsonProperty("stream")
   public ViewModel withStream(ViewStreamModel stream) {
     this.stream = stream;
     return this;
