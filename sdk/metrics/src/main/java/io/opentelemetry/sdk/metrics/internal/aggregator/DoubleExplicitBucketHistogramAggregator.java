@@ -14,6 +14,9 @@ import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.data.DoubleExemplarData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.metrics.internal.concurrent.AdderUtil;
+import io.opentelemetry.sdk.metrics.internal.concurrent.DoubleAdder;
+import io.opentelemetry.sdk.metrics.internal.concurrent.LongAdder;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramPointData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableMetricData;
@@ -26,10 +29,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
-import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import javax.annotation.Nullable;
 
 /**
@@ -97,61 +98,82 @@ public final class DoubleExplicitBucketHistogramAggregator
   }
 
   /**
-   * Adaptive-striping histogram handle.
+   * Lock-free histogram handle inspired by the Prometheus Java client's classic histogram.
    *
-   * <p>The base state (sum, min, max, per-bucket counts) is stored inline on the handle and guarded
-   * by a CAS spinlock ({@link #baseLockState}). The record path uses a single {@code
-   * compareAndSet(0, 1)} to acquire and a volatile store to release; on {@code compareAndSet}
-   * failure it escalates to a striped {@link Cell} array (allocated once, sized to {@code
-   * availableProcessors()}) and routes recorders by thread id. Each cell has its own {@link
-   * ReentrantLock}, so recorders can proceed in parallel across cells; the {@code ReentrantLock}
-   * (rather than another CAS spinlock) is chosen for cells because after escalation we're in the
-   * contended regime where blocking via {@code park()} beats burning CPU on spins.
+   * <p>The record path is fully lock-free: per-bucket counts and the running sum use {@link
+   * LongAdder} / {@link DoubleAdder} (Striped64-backed, so they scale with contention); min and max
+   * use CAS loops on volatile long fields holding the bit patterns. Total count is derived from
+   * bucket counts at collect time, saving a per-record atomic op.
    *
-   * <p>Uncontended workloads never allocate {@link #cells} and pay one CAS + primitive field
-   * updates + one volatile store per record. This is intended to match or beat the previous {@code
-   * synchronized} implementation's uncontended cost.
+   * <p>Record and collect are coordinated via a thread-striped {@link AtomicLong} array whose sign
+   * bit signals "collect in progress". Recorders increment their stripe's counter and, if the bit
+   * is set, back out and spin until the collector clears it. This prevents an observation from
+   * being split across two collection cycles at a delta reset boundary (bucket increment counted in
+   * one cycle, sum contribution counted in the next), which would otherwise produce count/sum
+   * inconsistencies that break downstream avg/ratio calculations.
    *
-   * <p>Collection acquires the base spinlock (with a plain busy-spin) and every cell lock in turn
-   * for a consistent cross-cell snapshot, then merges: sums are added, min/max are reduced,
-   * per-bucket counts are summed. Total {@code count} is derived from the sum of bucket counts,
-   * saving a per-record field write.
+   * <p>Ordering trick that avoids a separate completion counter: within {@link #doRecordDouble} the
+   * bucket increment is the last write. The internal volatile write inside {@code LongAdder.add}
+   * publishes all prior writes (sum, min, max) via Java's happens-before, so the collector's
+   * observation of {@code sum(bucketCounts) >= expected} is sufficient to conclude that all
+   * pre-flip recorders have completed every field write.
+   *
+   * <p>Under a single recorder the fast path is: one CAS on the striped started counter, one CAS on
+   * the sum adder base, one CAS on the bucket adder base, plus (in steady state where min/max have
+   * settled) two volatile reads for the min/max fast exits. Under multi-threaded recording each
+   * component scales independently via its own Striped64 backing; the striped started counter
+   * distributes recorders across {@code NCPUS} cache lines.
    */
   static final class Handle extends AggregatorHandle<HistogramPointData> {
+    private static final long MIN_INIT_BITS = Double.doubleToRawLongBits(Double.POSITIVE_INFINITY);
+    private static final long MAX_INIT_BITS = Double.doubleToRawLongBits(Double.NEGATIVE_INFINITY);
+
+    // Sign bit of a stripedStartedCounter entry; set by the collector while collect is in progress.
+    // Adding it toggles the bit (via two's-complement overflow) each time.
+    private static final long COLLECT_BIT = 1L << 63;
+
     // read-only
     private final List<Double> boundaryList;
     // read-only
     private final double[] boundaries;
     private final boolean recordMinMax;
 
-    // Base state — all fields guarded by baseLockState (CAS spinlock).
-    // Inlined onto Handle (rather than wrapped in a Cell) to keep the uncontended record path as
-    // cheap as possible: one CAS acquire, direct field updates, one volatile store to release.
+    // One LongAdder per bucket. Uncontended add is one CAS on the adder's base; under contention
+    // Striped64 allocates cells and scales.
+    private final LongAdder[] bucketCounts;
+    // Running sum. DoubleAdder is Striped64-backed just like LongAdder.
+    private final DoubleAdder sum = AdderUtil.createDoubleAdder();
+
+    // Min / max stored as raw long bits of the observed doubles. Updated via CAS loops that
+    // fast-exit when the observation isn't a new extreme, which is the common steady-state case.
+    // Not touched on the record path when recordMinMax is false.
     @SuppressWarnings("UnusedVariable")
-    private volatile int baseLockState; // 0 = free, 1 = held
+    private volatile long minBits = MIN_INIT_BITS;
 
-    private double baseSum;
-    private double baseMin = Double.MAX_VALUE;
-    private double baseMax = -1;
-    private final long[] baseCounts;
-
-    // Null until the first CAS failure on baseLockState. Installed once via CAS and never resized
-    // or cleared. Reads are volatile via the field declaration.
     @SuppressWarnings("UnusedVariable")
-    @Nullable
-    private volatile Cell[] cells;
+    private volatile long maxBits = MAX_INIT_BITS;
 
-    // Scratch buffer used during collection to accumulate merged bucket counts before wrapping
-    // into a point. Not touched on the record path.
+    private static final AtomicLongFieldUpdater<Handle> MIN_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "minBits");
+    private static final AtomicLongFieldUpdater<Handle> MAX_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "maxBits");
+
+    // Thread-striped counters used to coordinate record/collect. Low 63 bits are a monotonic
+    // observation count for the stripe; sign bit is set by the collector while collect is in
+    // progress. Recorders that observe the bit set back out and spin. Cumulative across cycles;
+    // the collector diffs against #lastCumulativeStarted to get the per-cycle expected count.
+    private final AtomicLong[] stripedStartedCounter;
+
+    // Sum of stripedStartedCounter low bits captured at the end of the previous collect. Used to
+    // derive the current cycle's expected observation count. Only touched by the collector.
+    private long lastCumulativeStarted;
+
+    // Scratch buffer used during collection to accumulate per-bucket counts. Not touched on the
+    // record path.
     private final long[] countsScratch;
 
     // Used only when MemoryMode = REUSABLE_DATA
     @Nullable private final MutableHistogramPointData reusablePoint;
-
-    private static final AtomicIntegerFieldUpdater<Handle> BASE_LOCK =
-        AtomicIntegerFieldUpdater.newUpdater(Handle.class, "baseLockState");
-    private static final AtomicReferenceFieldUpdater<Handle, Cell[]> CELLS =
-        AtomicReferenceFieldUpdater.newUpdater(Handle.class, Cell[].class, "cells");
 
     Handle(
         long creationEpochNanos,
@@ -165,7 +187,15 @@ public final class DoubleExplicitBucketHistogramAggregator
       this.boundaries = boundaries;
       this.recordMinMax = recordMinMax;
       int bucketCount = boundaries.length + 1;
-      this.baseCounts = new long[bucketCount];
+      this.bucketCounts = new LongAdder[bucketCount];
+      for (int i = 0; i < bucketCount; i++) {
+        this.bucketCounts[i] = AdderUtil.createLongAdder();
+      }
+      int stripes = Runtime.getRuntime().availableProcessors();
+      this.stripedStartedCounter = new AtomicLong[stripes];
+      for (int i = 0; i < stripes; i++) {
+        this.stripedStartedCounter[i] = new AtomicLong();
+      }
       this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
         this.reusablePoint = new MutableHistogramPointData(bucketCount);
@@ -183,215 +213,158 @@ public final class DoubleExplicitBucketHistogramAggregator
     }
 
     @Override
+    @SuppressWarnings("ThreadPriorityCheck")
     protected void doRecordDouble(double value) {
+      // Acquire a "pre-flip" slot on our stripe. If collect is in progress (sign bit set), back
+      // out and spin until it finishes.
+      AtomicLong stripe =
+          stripedStartedCounter[
+              (int) (Thread.currentThread().getId() % stripedStartedCounter.length)];
+      while (true) {
+        long c = stripe.incrementAndGet();
+        if ((c & COLLECT_BIT) == 0) {
+          break;
+        }
+        stripe.decrementAndGet();
+        while ((stripe.get() & COLLECT_BIT) != 0) {
+          Thread.yield();
+        }
+      }
+
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
-      Cell[] cs = cells;
-      if (cs == null) {
-        // Uncontended fast path: single CAS on baseLockState.
-        if (BASE_LOCK.compareAndSet(this, 0, 1)) {
-          try {
-            baseSum += value;
-            if (recordMinMax) {
-              if (value < baseMin) {
-                baseMin = value;
-              }
-              if (value > baseMax) {
-                baseMax = value;
-              }
-            }
-            baseCounts[bucketIndex]++;
-            return;
-          } finally {
-            baseLockState = 0; // volatile store releases the spinlock
-          }
-        }
-        // CAS failed: another thread holds baseLockState. Escalate to cells (once).
-        cs = escalate();
+      // Ordered writes: sum, min, max, then bucket increment last. The internal volatile write
+      // inside LongAdder.increment() publishes the prior writes to any thread that later observes
+      // this bucket's incremented value, so the collector's "sum(bucketCounts) >= expected" wait
+      // is a valid barrier for the whole observation.
+      sum.add(value);
+      if (recordMinMax) {
+        updateMin(value);
+        updateMax(value);
       }
-      // Post-escalation path: route by thread id and block on the chosen cell if necessary.
-      Cell cell = cs[Math.abs((int) (Thread.currentThread().getId() % cs.length))];
-      cell.lock.lock();
-      try {
-        cell.sum += value;
-        if (recordMinMax) {
-          if (value < cell.min) {
-            cell.min = value;
-          }
-          if (value > cell.max) {
-            cell.max = value;
-          }
-        }
-        cell.counts[bucketIndex]++;
-      } finally {
-        cell.lock.unlock();
-      }
+      bucketCounts[bucketIndex].increment();
     }
 
     /**
-     * Install a fresh cells array via CAS. One-shot: if this thread loses the race, it uses the
-     * winning thread's array instead. Never grows or reclaims.
+     * CAS-loop min update. Fast-exits without touching memory when {@code value} is not smaller.
      */
-    private Cell[] escalate() {
-      Cell[] existing = cells;
-      if (existing != null) {
-        return existing;
-      }
-      int n = Runtime.getRuntime().availableProcessors();
-      Cell[] fresh = new Cell[n];
-      int bucketCount = boundaries.length + 1;
-      for (int i = 0; i < n; i++) {
-        fresh[i] = new Cell(bucketCount);
-      }
-      if (CELLS.compareAndSet(this, null, fresh)) {
-        return fresh;
-      }
-      // Lost the race; a concurrent recorder installed cells first. The CAS only failed because
-      // cells is now non-null, so requireNonNull is safe.
-      return Objects.requireNonNull(cells, "cells");
+    private void updateMin(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = minBits;
+        if (value >= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MIN_BITS.compareAndSet(this, cur, newBits));
     }
 
-    /**
-     * Blocking-acquire the base spinlock. Only used by the collect path, which runs infrequently
-     * and holds the lock for a short (bounded by bucket count) critical section. A plain busy-spin
-     * is adequate here; Thread.onSpinWait is Java 9+, so we don't hint the CPU.
-     */
-    private void lockBase() {
-      while (!BASE_LOCK.compareAndSet(this, 0, 1)) {
-        // busy spin
-      }
+    /** CAS-loop max update. Fast-exits without touching memory when {@code value} is not larger. */
+    private void updateMax(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = maxBits;
+        if (value <= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MAX_BITS.compareAndSet(this, cur, newBits));
     }
 
     @Override
+    @SuppressWarnings("ThreadPriorityCheck")
     protected HistogramPointData doAggregateThenMaybeResetDoubles(
         long startEpochNanos,
         long epochNanos,
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      // Acquire base + all cell locks for a consistent cross-cell snapshot. Recorders on this
-      // series are paused for the duration of the merge; the merge is O(cells * buckets).
-      lockBase();
-      Cell[] cs = cells;
-      if (cs != null) {
-        for (Cell c : cs) {
-          c.lock.lock();
-        }
+      // Phase 1: flip the collect bit on every stripe and sum the pre-flip low bits. This gives
+      // the cumulative count of observations that started before collect began.
+      long cumulativeStarted = 0;
+      for (AtomicLong stripe : stripedStartedCounter) {
+        cumulativeStarted += stripe.getAndAdd(COLLECT_BIT) & ~COLLECT_BIT;
       }
-      try {
-        Arrays.fill(countsScratch, 0);
-        double sum = 0;
-        long count = 0;
-        double min = Double.MAX_VALUE;
-        double max = -1;
+      long expectedThisCycle = cumulativeStarted - lastCumulativeStarted;
 
-        // Merge base.
-        sum += baseSum;
-        if (recordMinMax) {
-          if (baseMin < min) {
-            min = baseMin;
-          }
-          if (baseMax > max) {
-            max = baseMax;
-          }
-        }
-        for (int i = 0; i < baseCounts.length; i++) {
-          long c = baseCounts[i];
-          countsScratch[i] += c;
-          count += c;
-        }
-        if (reset) {
-          baseSum = 0;
-          baseMin = Double.MAX_VALUE;
-          baseMax = -1;
-          Arrays.fill(baseCounts, 0);
-        }
-
-        // Merge cells if escalated.
-        if (cs != null) {
-          for (Cell cell : cs) {
-            sum += cell.sum;
-            if (recordMinMax) {
-              if (cell.min < min) {
-                min = cell.min;
-              }
-              if (cell.max > max) {
-                max = cell.max;
-              }
-            }
-            for (int i = 0; i < cell.counts.length; i++) {
-              long c = cell.counts[i];
-              countsScratch[i] += c;
-              count += c;
-            }
-            if (reset) {
-              resetCell(cell);
-            }
-          }
-        }
-
-        HistogramPointData pointData;
-        if (reusablePoint == null) {
-          pointData =
-              ImmutableHistogramPointData.create(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum,
-                  recordMinMax && count > 0,
-                  recordMinMax ? min : 0,
-                  recordMinMax && count > 0,
-                  recordMinMax ? max : 0,
-                  boundaryList,
-                  PrimitiveLongList.wrap(Arrays.copyOf(countsScratch, countsScratch.length)),
-                  exemplars);
-        } else /* REUSABLE_DATA */ {
-          pointData =
-              reusablePoint.set(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum,
-                  recordMinMax && count > 0,
-                  recordMinMax ? min : 0,
-                  recordMinMax && count > 0,
-                  recordMinMax ? max : 0,
-                  boundaryList,
-                  countsScratch,
-                  exemplars);
-        }
-        return pointData;
-      } finally {
-        if (cs != null) {
-          for (Cell c : cs) {
-            c.lock.unlock();
-          }
-        }
-        baseLockState = 0; // volatile store releases the spinlock
+      // Phase 2: wait for the completion signal. Because bucketCounts.increment() is the last
+      // write in doRecordDouble, once the current cycle's bucket sum reaches expectedThisCycle,
+      // all pre-flip recorders have finished writing sum, min, max, and their bucket. Post-flip
+      // recorders are spinning on the collect bit, so no new writes arrive during Phase 3.
+      //
+      // The bucketCounts adders are per-cycle in delta mode (reset at the end of the previous
+      // Phase 3) and cumulative in cumulative mode. In cumulative mode, expectedThisCycle is
+      // still just the count of observations since the previous collect, since
+      // lastCumulativeStarted
+      // is subtracted; the bucket sum grows to at least match without ever being reset.
+      while (bucketSumTotal() < expectedThisCycle) {
+        Thread.yield();
       }
+
+      // Phase 3: snapshot (and reset if delta). Recorders are quiescent, so this is atomic from
+      // the recorder's perspective.
+      long totalCount = 0;
+      for (int i = 0; i < bucketCounts.length; i++) {
+        long c = reset ? bucketCounts[i].sumThenReset() : bucketCounts[i].sum();
+        countsScratch[i] = c;
+        totalCount += c;
+      }
+      double totalSum = reset ? sum.sumThenReset() : sum.sum();
+
+      double snapshotMin = Double.POSITIVE_INFINITY;
+      double snapshotMax = Double.NEGATIVE_INFINITY;
+      if (recordMinMax) {
+        long minSnapshot = reset ? MIN_BITS.getAndSet(this, MIN_INIT_BITS) : minBits;
+        long maxSnapshot = reset ? MAX_BITS.getAndSet(this, MAX_INIT_BITS) : maxBits;
+        snapshotMin = Double.longBitsToDouble(minSnapshot);
+        snapshotMax = Double.longBitsToDouble(maxSnapshot);
+      }
+
+      // Phase 4: clear the collect bit on every stripe (via two's-complement overflow of
+      // adding 1L << 63 to a value that already has the sign bit set). Spinning recorders resume.
+      lastCumulativeStarted = cumulativeStarted;
+      for (AtomicLong stripe : stripedStartedCounter) {
+        stripe.addAndGet(COLLECT_BIT);
+      }
+
+      HistogramPointData pointData;
+      if (reusablePoint == null) {
+        pointData =
+            ImmutableHistogramPointData.create(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                totalSum,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMin : 0,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMax : 0,
+                boundaryList,
+                PrimitiveLongList.wrap(Arrays.copyOf(countsScratch, countsScratch.length)),
+                exemplars);
+      } else /* REUSABLE_DATA */ {
+        pointData =
+            reusablePoint.set(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                totalSum,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMin : 0,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMax : 0,
+                boundaryList,
+                countsScratch,
+                exemplars);
+      }
+      return pointData;
     }
 
-    private static void resetCell(Cell cell) {
-      cell.sum = 0;
-      cell.min = Double.MAX_VALUE;
-      cell.max = -1;
-      Arrays.fill(cell.counts, 0);
-    }
-
-    /**
-     * One shard of a striped histogram, used only after escalation. All mutable fields are guarded
-     * by {@link #lock}. Fields are package-private so that {@link Handle} can read them directly
-     * during merge without incurring accessor overhead.
-     */
-    private static final class Cell {
-      final ReentrantLock lock = new ReentrantLock();
-      final long[] counts;
-      double sum;
-      double min = Double.MAX_VALUE;
-      double max = -1;
-
-      Cell(int buckets) {
-        this.counts = new long[buckets];
+    private long bucketSumTotal() {
+      long total = 0;
+      for (LongAdder adder : bucketCounts) {
+        total += adder.sum();
       }
+      return total;
     }
   }
 }
