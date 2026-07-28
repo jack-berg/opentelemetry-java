@@ -111,7 +111,9 @@ public class MetricRecordBenchmark {
   @State(Scope.Benchmark)
   public static class BenchmarkState {
 
-    @Param InstrumentTypeAndAggregation instrumentTypeAndAggregation;
+    // @Param
+    InstrumentTypeAndAggregation instrumentTypeAndAggregation =
+        InstrumentTypeAndAggregation.HISTOGRAM_EXPLICIT;
 
     @Param AggregationTemporality aggregationTemporality;
 
