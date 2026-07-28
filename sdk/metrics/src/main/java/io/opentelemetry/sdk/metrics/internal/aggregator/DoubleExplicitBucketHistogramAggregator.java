@@ -105,12 +105,12 @@ public final class DoubleExplicitBucketHistogramAggregator
    * use CAS loops on volatile long fields holding the bit patterns. Total count is derived from
    * bucket counts at collect time, saving a per-record atomic op.
    *
-   * <p>Record and collect are coordinated via a thread-striped {@link AtomicLong} array whose sign
-   * bit signals "collect in progress". Recorders increment their stripe's counter and, if the bit
-   * is set, back out and spin until the collector clears it. This prevents an observation from
-   * being split across two collection cycles at a delta reset boundary (bucket increment counted in
-   * one cycle, sum contribution counted in the next), which would otherwise produce count/sum
-   * inconsistencies that break downstream avg/ratio calculations.
+   * <p>Record and collect are coordinated via a single {@link AtomicLong} whose sign bit signals
+   * "collect in progress". Recorders increment the counter and, if the bit is set, back out and
+   * spin until the collector clears it. This prevents an observation from being split across two
+   * collection cycles at a delta reset boundary (bucket increment counted in one cycle, sum
+   * contribution counted in the next), which would otherwise produce count/sum inconsistencies that
+   * break downstream avg/ratio calculations.
    *
    * <p>Ordering trick that avoids a separate completion counter: within {@link #doRecordDouble} the
    * bucket increment is the last write. The internal volatile write inside {@code LongAdder.add}
@@ -118,18 +118,19 @@ public final class DoubleExplicitBucketHistogramAggregator
    * observation of {@code sum(bucketCounts) >= expected} is sufficient to conclude that all
    * pre-flip recorders have completed every field write.
    *
-   * <p>Under a single recorder the fast path is: one CAS on the striped started counter, one CAS on
-   * the sum adder base, one CAS on the bucket adder base, plus (in steady state where min/max have
-   * settled) two volatile reads for the min/max fast exits. Under multi-threaded recording each
-   * component scales independently via its own Striped64 backing; the striped started counter
-   * distributes recorders across {@code NCPUS} cache lines.
+   * <p>Under a single recorder the fast path is: one CAS on the started counter, one CAS on the sum
+   * adder base, one CAS on the bucket adder base, plus (in steady state where min/max have settled)
+   * two volatile reads for the min/max fast exits. Under multi-threaded recording the sum and
+   * bucket adders scale independently via their own Striped64 backing; the started counter is not
+   * striped, so it becomes the contention point on the record path under high concurrent
+   * throughput.
    */
   static final class Handle extends AggregatorHandle<HistogramPointData> {
     private static final long MIN_INIT_BITS = Double.doubleToRawLongBits(Double.POSITIVE_INFINITY);
     private static final long MAX_INIT_BITS = Double.doubleToRawLongBits(Double.NEGATIVE_INFINITY);
 
-    // Sign bit of a stripedStartedCounter entry; set by the collector while collect is in progress.
-    // Adding it toggles the bit (via two's-complement overflow) each time.
+    // Sign bit of startedCounter; set by the collector while collect is in progress. Adding it
+    // toggles the bit (via two's-complement overflow) each time.
     private static final long COLLECT_BIT = 1L << 63;
 
     // read-only
@@ -158,19 +159,14 @@ public final class DoubleExplicitBucketHistogramAggregator
     private static final AtomicLongFieldUpdater<Handle> MAX_BITS =
         AtomicLongFieldUpdater.newUpdater(Handle.class, "maxBits");
 
-    // Thread-striped counters used to coordinate record/collect. Low 63 bits are a monotonic
-    // observation count for the stripe; sign bit is set by the collector while collect is in
-    // progress. Recorders that observe the bit set back out and spin. Cumulative across cycles;
-    // the collector diffs against #lastCumulativeStarted to get the per-cycle expected count.
-    //
-    // Length is a power of 2 (NCPUS rounded up) so the stripe probe compiles to a bitwise AND
-    // instead of a modulo. The mask is stored to make that explicit rather than relying on the
-    // JIT to constant-fold Array.length - 1.
-    private final AtomicLong[] stripedStartedCounter;
-    private final int stripeMask;
+    // Started-observation counter used to coordinate record/collect. Low 63 bits are a monotonic
+    // observation count; sign bit is set by the collector while collect is in progress. Recorders
+    // that observe the bit set back out and spin. Cumulative across cycles; the collector diffs
+    // against #lastCumulativeStarted to get the per-cycle expected count.
+    private final AtomicLong startedCounter = new AtomicLong();
 
-    // Sum of stripedStartedCounter low bits captured at the end of the previous collect. Used to
-    // derive the current cycle's expected observation count. Only touched by the collector.
+    // startedCounter low bits captured at the end of the previous collect. Used to derive the
+    // current cycle's expected observation count. Only touched by the collector.
     private long lastCumulativeStarted;
 
     // Scratch buffer used during collection to accumulate per-bucket counts. Not touched on the
@@ -196,12 +192,6 @@ public final class DoubleExplicitBucketHistogramAggregator
       for (int i = 0; i < bucketCount; i++) {
         this.bucketCounts[i] = AdderUtil.createLongAdder();
       }
-      int stripes = roundUpToPowerOfTwo(Runtime.getRuntime().availableProcessors());
-      this.stripedStartedCounter = new AtomicLong[stripes];
-      for (int i = 0; i < stripes; i++) {
-        this.stripedStartedCounter[i] = new AtomicLong();
-      }
-      this.stripeMask = stripes - 1;
       this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
         this.reusablePoint = new MutableHistogramPointData(bucketCount);
@@ -221,16 +211,15 @@ public final class DoubleExplicitBucketHistogramAggregator
     @Override
     @SuppressWarnings("ThreadPriorityCheck")
     protected void doRecordDouble(double value) {
-      // Acquire a "pre-flip" slot on our stripe. If collect is in progress (sign bit set), back
-      // out and spin until it finishes.
-      AtomicLong stripe = stripedStartedCounter[(int) Thread.currentThread().getId() & stripeMask];
+      // Acquire a "pre-flip" slot on the started counter. If collect is in progress (sign bit
+      // set), back out and spin until it finishes.
       while (true) {
-        long c = stripe.incrementAndGet();
+        long c = startedCounter.incrementAndGet();
         if ((c & COLLECT_BIT) == 0) {
           break;
         }
-        stripe.decrementAndGet();
-        while ((stripe.get() & COLLECT_BIT) != 0) {
+        startedCounter.decrementAndGet();
+        while ((startedCounter.get() & COLLECT_BIT) != 0) {
           Thread.yield();
         }
       }
@@ -282,12 +271,9 @@ public final class DoubleExplicitBucketHistogramAggregator
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      // Phase 1: flip the collect bit on every stripe and sum the pre-flip low bits. This gives
-      // the cumulative count of observations that started before collect began.
-      long cumulativeStarted = 0;
-      for (AtomicLong stripe : stripedStartedCounter) {
-        cumulativeStarted += stripe.getAndAdd(COLLECT_BIT) & ~COLLECT_BIT;
-      }
+      // Phase 1: flip the collect bit on the started counter. Low bits of the pre-flip value
+      // give the cumulative count of observations that started before collect began.
+      long cumulativeStarted = startedCounter.getAndAdd(COLLECT_BIT) & ~COLLECT_BIT;
       long expectedThisCycle = cumulativeStarted - lastCumulativeStarted;
 
       // Phase 2: wait for the completion signal. Because bucketCounts.increment() is the last
@@ -323,12 +309,10 @@ public final class DoubleExplicitBucketHistogramAggregator
         snapshotMax = Double.longBitsToDouble(maxSnapshot);
       }
 
-      // Phase 4: clear the collect bit on every stripe (via two's-complement overflow of
-      // adding 1L << 63 to a value that already has the sign bit set). Spinning recorders resume.
+      // Phase 4: clear the collect bit (via two's-complement overflow of adding 1L << 63 to a
+      // value that already has the sign bit set). Spinning recorders resume.
       lastCumulativeStarted = cumulativeStarted;
-      for (AtomicLong stripe : stripedStartedCounter) {
-        stripe.addAndGet(COLLECT_BIT);
-      }
+      startedCounter.addAndGet(COLLECT_BIT);
 
       HistogramPointData pointData;
       if (reusablePoint == null) {
@@ -369,15 +353,6 @@ public final class DoubleExplicitBucketHistogramAggregator
         total += adder.sum();
       }
       return total;
-    }
-
-    /** Smallest power of 2 &gt;= {@code n}, with a floor of 1. */
-    private static int roundUpToPowerOfTwo(int n) {
-      if (n <= 1) {
-        return 1;
-      }
-      int highest = Integer.highestOneBit(n);
-      return highest == n ? highest : highest << 1;
     }
   }
 }
