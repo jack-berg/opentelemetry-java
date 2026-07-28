@@ -162,7 +162,12 @@ public final class DoubleExplicitBucketHistogramAggregator
     // observation count for the stripe; sign bit is set by the collector while collect is in
     // progress. Recorders that observe the bit set back out and spin. Cumulative across cycles;
     // the collector diffs against #lastCumulativeStarted to get the per-cycle expected count.
+    //
+    // Length is a power of 2 (NCPUS rounded up) so the stripe probe compiles to a bitwise AND
+    // instead of a modulo. The mask is stored to make that explicit rather than relying on the
+    // JIT to constant-fold Array.length - 1.
     private final AtomicLong[] stripedStartedCounter;
+    private final int stripeMask;
 
     // Sum of stripedStartedCounter low bits captured at the end of the previous collect. Used to
     // derive the current cycle's expected observation count. Only touched by the collector.
@@ -191,11 +196,12 @@ public final class DoubleExplicitBucketHistogramAggregator
       for (int i = 0; i < bucketCount; i++) {
         this.bucketCounts[i] = AdderUtil.createLongAdder();
       }
-      int stripes = Runtime.getRuntime().availableProcessors();
+      int stripes = roundUpToPowerOfTwo(Runtime.getRuntime().availableProcessors());
       this.stripedStartedCounter = new AtomicLong[stripes];
       for (int i = 0; i < stripes; i++) {
         this.stripedStartedCounter[i] = new AtomicLong();
       }
+      this.stripeMask = stripes - 1;
       this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
         this.reusablePoint = new MutableHistogramPointData(bucketCount);
@@ -217,9 +223,7 @@ public final class DoubleExplicitBucketHistogramAggregator
     protected void doRecordDouble(double value) {
       // Acquire a "pre-flip" slot on our stripe. If collect is in progress (sign bit set), back
       // out and spin until it finishes.
-      AtomicLong stripe =
-          stripedStartedCounter[
-              (int) (Thread.currentThread().getId() % stripedStartedCounter.length)];
+      AtomicLong stripe = stripedStartedCounter[(int) Thread.currentThread().getId() & stripeMask];
       while (true) {
         long c = stripe.incrementAndGet();
         if ((c & COLLECT_BIT) == 0) {
@@ -365,6 +369,15 @@ public final class DoubleExplicitBucketHistogramAggregator
         total += adder.sum();
       }
       return total;
+    }
+
+    /** Smallest power of 2 &gt;= {@code n}, with a floor of 1. */
+    private static int roundUpToPowerOfTwo(int n) {
+      if (n <= 1) {
+        return 1;
+      }
+      int highest = Integer.highestOneBit(n);
+      return highest == n ? highest : highest << 1;
     }
   }
 }
