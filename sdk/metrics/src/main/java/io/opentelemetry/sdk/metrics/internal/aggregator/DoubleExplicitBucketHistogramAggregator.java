@@ -6,7 +6,6 @@
 package io.opentelemetry.sdk.metrics.internal.aggregator;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.internal.GuardedBy;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.common.export.MemoryMode;
@@ -15,6 +14,9 @@ import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.data.DoubleExemplarData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.metrics.internal.concurrent.AdderUtil;
+import io.opentelemetry.sdk.metrics.internal.concurrent.DoubleAdder;
+import io.opentelemetry.sdk.metrics.internal.concurrent.LongAdder;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramPointData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableMetricData;
@@ -27,6 +29,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import javax.annotation.Nullable;
 
 /**
@@ -93,31 +97,56 @@ public final class DoubleExplicitBucketHistogramAggregator
         ImmutableHistogramData.create(temporality, pointData));
   }
 
+  /**
+   * Lock-free histogram handle inspired by the Prometheus Java client's classic histogram.
+   *
+   * <p>Bucket counts and running sum use {@link LongAdder} / {@link DoubleAdder}; min and max use
+   * CAS loops on volatile long bit patterns. Total count is derived from bucket counts at collect.
+   *
+   * <p>A thread-striped {@link AtomicLong} array coordinates record and collect. Its sign bit
+   * signals "collect in progress"; recorders back out and spin when they observe it. This prevents
+   * an observation's writes from being split across a delta reset boundary, which would produce
+   * count/sum inconsistencies at collect points.
+   *
+   * <p>Within {@link #doRecordDouble} the bucket increment is the last write. Its internal volatile
+   * write publishes the prior sum/min/max writes, so the collector's wait for {@code
+   * sum(bucketCounts) >= expected} doubles as a barrier for the whole observation.
+   */
   static final class Handle extends AggregatorHandle<HistogramPointData> {
-    // read-only
+    private static final long MIN_INIT_BITS = Double.doubleToRawLongBits(Double.POSITIVE_INFINITY);
+    private static final long MAX_INIT_BITS = Double.doubleToRawLongBits(Double.NEGATIVE_INFINITY);
+    private static final long COLLECT_BIT = 1L << 63;
+
     private final List<Double> boundaryList;
-    // read-only
     private final double[] boundaries;
     private final boolean recordMinMax;
 
-    private final Object lock = new Object();
+    private final LongAdder[] bucketCounts;
+    private final DoubleAdder sum = AdderUtil.createDoubleAdder();
 
-    @GuardedBy("lock")
-    private double sum;
+    // Min / max as raw double bits so they can be CAS-updated via AtomicLongFieldUpdater.
+    @SuppressWarnings("UnusedVariable")
+    private volatile long minBits = MIN_INIT_BITS;
 
-    @GuardedBy("lock")
-    private double min;
+    @SuppressWarnings("UnusedVariable")
+    private volatile long maxBits = MAX_INIT_BITS;
 
-    @GuardedBy("lock")
-    private double max;
+    private static final AtomicLongFieldUpdater<Handle> MIN_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "minBits");
+    private static final AtomicLongFieldUpdater<Handle> MAX_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "maxBits");
 
-    @GuardedBy("lock")
-    private long count;
+    // Power-of-2 length so the stripe probe is a bitwise AND with stripeMask.
+    private final AtomicLong[] stripedStartedCounter;
+    private final int stripeMask;
 
-    @GuardedBy("lock")
-    private final long[] counts;
+    // Stripe total captured at the previous collect; used to derive the current cycle's expected
+    // count. Collector-only.
+    private long lastCumulativeStarted;
 
-    // Used only when MemoryMode = REUSABLE_DATA
+    private final long[] countsScratch;
+
+    // Non-null only when MemoryMode == REUSABLE_DATA.
     @Nullable private final MutableHistogramPointData reusablePoint;
 
     Handle(
@@ -131,13 +160,20 @@ public final class DoubleExplicitBucketHistogramAggregator
       this.boundaryList = boundaryList;
       this.boundaries = boundaries;
       this.recordMinMax = recordMinMax;
-      this.counts = new long[this.boundaries.length + 1];
-      this.sum = 0;
-      this.min = Double.MAX_VALUE;
-      this.max = -1;
-      this.count = 0;
+      int bucketCount = boundaries.length + 1;
+      this.bucketCounts = new LongAdder[bucketCount];
+      for (int i = 0; i < bucketCount; i++) {
+        this.bucketCounts[i] = AdderUtil.createLongAdder();
+      }
+      int stripes = roundUpToPowerOfTwo(Runtime.getRuntime().availableProcessors());
+      this.stripedStartedCounter = new AtomicLong[stripes];
+      for (int i = 0; i < stripes; i++) {
+        this.stripedStartedCounter[i] = new AtomicLong();
+      }
+      this.stripeMask = stripes - 1;
+      this.countsScratch = new long[bucketCount];
       if (memoryMode == MemoryMode.REUSABLE_DATA) {
-        this.reusablePoint = new MutableHistogramPointData(counts.length);
+        this.reusablePoint = new MutableHistogramPointData(bucketCount);
       } else {
         this.reusablePoint = null;
       }
@@ -145,74 +181,156 @@ public final class DoubleExplicitBucketHistogramAggregator
 
     @Override
     public void recordLong(long value, Attributes attributes, Context context) {
-      // Since there is no LongExplicitBucketHistogramAggregator and we need to support measurements
-      // from LongHistogram, we redirect calls from #recordLong to #recordDouble. Without this, the
-      // base AggregatorHandle implementation of #recordLong throws.
+      // There is no LongExplicitBucketHistogramAggregator; redirect to recordDouble so
+      // LongHistogram measurements route through this handle.
       super.recordDouble((double) value, attributes, context);
     }
 
     @Override
+    @SuppressWarnings("ThreadPriorityCheck")
+    protected void doRecordDouble(double value) {
+      // Reserve a pre-flip slot on our stripe. If the collect bit is set, back out and spin.
+      AtomicLong stripe =
+          stripedStartedCounter[System.identityHashCode(Thread.currentThread()) & stripeMask];
+      while (true) {
+        long c = stripe.incrementAndGet();
+        if ((c & COLLECT_BIT) == 0) {
+          break;
+        }
+        stripe.decrementAndGet();
+        while ((stripe.get() & COLLECT_BIT) != 0) {
+          Thread.yield();
+        }
+      }
+
+      // Bucket increment must be last: it publishes the sum/min/max writes for the collector.
+      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+      sum.add(value);
+      if (recordMinMax) {
+        updateMin(value);
+        updateMax(value);
+      }
+      bucketCounts[bucketIndex].increment();
+    }
+
+    /** Fast-exits without a CAS when {@code value} is not smaller than the current min. */
+    private void updateMin(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = minBits;
+        if (value >= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MIN_BITS.compareAndSet(this, cur, newBits));
+    }
+
+    /** Fast-exits without a CAS when {@code value} is not larger than the current max. */
+    private void updateMax(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = maxBits;
+        if (value <= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MAX_BITS.compareAndSet(this, cur, newBits));
+    }
+
+    @Override
+    @SuppressWarnings("ThreadPriorityCheck")
     protected HistogramPointData doAggregateThenMaybeResetDoubles(
         long startEpochNanos,
         long epochNanos,
         Attributes attributes,
         List<DoubleExemplarData> exemplars,
         boolean reset) {
-      synchronized (lock) {
-        HistogramPointData pointData;
-        if (reusablePoint == null) {
-          pointData =
-              ImmutableHistogramPointData.create(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.min : 0,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.max : 0,
-                  boundaryList,
-                  PrimitiveLongList.wrap(Arrays.copyOf(counts, counts.length)),
-                  exemplars);
-        } else /* REUSABLE_DATA */ {
-          pointData =
-              reusablePoint.set(
-                  startEpochNanos,
-                  epochNanos,
-                  attributes,
-                  sum,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.min : 0,
-                  recordMinMax && this.count > 0,
-                  recordMinMax ? this.max : 0,
-                  boundaryList,
-                  counts,
-                  exemplars);
-        }
-        if (reset) {
-          this.sum = 0;
-          this.min = Double.MAX_VALUE;
-          this.max = -1;
-          this.count = 0;
-          Arrays.fill(this.counts, 0);
-        }
-        return pointData;
+      // Phase 1: set the collect bit on every stripe; capture the pre-flip cumulative count.
+      long cumulativeStarted = 0;
+      for (AtomicLong stripe : stripedStartedCounter) {
+        cumulativeStarted += stripe.getAndAdd(COLLECT_BIT) & ~COLLECT_BIT;
       }
+      long expectedThisCycle = cumulativeStarted - lastCumulativeStarted;
+
+      // Phase 2: wait for pre-flip recorders to publish their bucket increments. Post-flip
+      // recorders are spinning on the collect bit, so nothing new arrives.
+      while (bucketSumTotal() < expectedThisCycle) {
+        Thread.yield();
+      }
+
+      // Phase 3: snapshot (and reset if delta) with recorders quiescent.
+      long totalCount = 0;
+      for (int i = 0; i < bucketCounts.length; i++) {
+        long c = reset ? bucketCounts[i].sumThenReset() : bucketCounts[i].sum();
+        countsScratch[i] = c;
+        totalCount += c;
+      }
+      double totalSum = reset ? sum.sumThenReset() : sum.sum();
+
+      double snapshotMin = Double.POSITIVE_INFINITY;
+      double snapshotMax = Double.NEGATIVE_INFINITY;
+      if (recordMinMax) {
+        long minSnapshot = reset ? MIN_BITS.getAndSet(this, MIN_INIT_BITS) : minBits;
+        long maxSnapshot = reset ? MAX_BITS.getAndSet(this, MAX_INIT_BITS) : maxBits;
+        snapshotMin = Double.longBitsToDouble(minSnapshot);
+        snapshotMax = Double.longBitsToDouble(maxSnapshot);
+      }
+
+      // Phase 4: clear the collect bit. addAndGet(COLLECT_BIT) toggles the sign bit off via
+      // two's-complement overflow. Spinning recorders resume.
+      lastCumulativeStarted = cumulativeStarted;
+      for (AtomicLong stripe : stripedStartedCounter) {
+        stripe.addAndGet(COLLECT_BIT);
+      }
+
+      HistogramPointData pointData;
+      if (reusablePoint == null) {
+        pointData =
+            ImmutableHistogramPointData.create(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                totalSum,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMin : 0,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMax : 0,
+                boundaryList,
+                PrimitiveLongList.wrap(Arrays.copyOf(countsScratch, countsScratch.length)),
+                exemplars);
+      } else /* REUSABLE_DATA */ {
+        pointData =
+            reusablePoint.set(
+                startEpochNanos,
+                epochNanos,
+                attributes,
+                totalSum,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMin : 0,
+                recordMinMax && totalCount > 0,
+                recordMinMax ? snapshotMax : 0,
+                boundaryList,
+                countsScratch,
+                exemplars);
+      }
+      return pointData;
     }
 
-    @Override
-    protected void doRecordDouble(double value) {
-      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
-
-      synchronized (lock) {
-        this.sum += value;
-        if (recordMinMax) {
-          this.min = Math.min(this.min, value);
-          this.max = Math.max(this.max, value);
-        }
-        this.count++;
-        this.counts[bucketIndex]++;
+    private long bucketSumTotal() {
+      long total = 0;
+      for (LongAdder adder : bucketCounts) {
+        total += adder.sum();
       }
+      return total;
+    }
+
+    /** Smallest power of 2 &gt;= {@code n}, with a floor of 1. */
+    private static int roundUpToPowerOfTwo(int n) {
+      if (n <= 1) {
+        return 1;
+      }
+      int highest = Integer.highestOneBit(n);
+      return highest == n ? highest : highest << 1;
     }
   }
 }
