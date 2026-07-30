@@ -42,6 +42,12 @@ import io.opentelemetry.sdk.metrics.export.DefaultAggregationSelector;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
+import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
+import io.prometheus.metrics.core.datapoints.GaugeDataPoint;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.core.metrics.Histogram;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -124,6 +130,14 @@ public class MetricRecordBenchmark {
     @Param({"false", "true"})
     boolean bound;
 
+    // Exploratory: when true, record through the equivalent Prometheus Java client instrument
+    // using the same benchmark harness (measurements, cardinality, threads, bound-vs-unbound).
+    // Not intended for merge; aggregationTemporality is a no-op for Prometheus (it's always
+    // cumulative). Use to compare the OTel and Prometheus record paths under identical
+    // workload shapes.
+    @Param({"false", "true"})
+    boolean prometheus;
+
     // The following parameters are excluded from the benchmark to reduce combinatorial explosion
     // but can optionally be enabled for adhoc evaluation.
 
@@ -145,12 +159,17 @@ public class MetricRecordBenchmark {
     boolean exemplars = false;
 
     OpenTelemetrySdk openTelemetry;
-    // Populated when bound == false.
+    // Populated when bound == false && !prometheus.
     private Instrument instrument;
+    // Populated when bound == false && prometheus.
+    private PrometheusInstrument prometheusInstrument;
     // Populated when bound == true; parallel to attributesList (one bound instrument per series).
+    // Used for both OTel and Prometheus.
     private List<BoundInstrument> boundInstruments;
     List<Long> measurements;
     List<Attributes> attributesList;
+    // Parallel to attributesList when prometheus == true; the single label value per series.
+    List<String> labelValues;
     Span span;
     io.opentelemetry.context.Scope contextScope;
     // Hands out a distinct seed to each recording thread's ThreadState so threads traverse the
@@ -189,6 +208,7 @@ public class MetricRecordBenchmark {
 
       Random random = new Random(INITIAL_SEED);
       attributesList = new ArrayList<>(cardinality);
+      labelValues = new ArrayList<>(cardinality);
       AttributeKey<String> key = AttributeKey.stringKey("key");
       String last = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
       for (int i = 0; i < cardinality; i++) {
@@ -196,14 +216,26 @@ public class MetricRecordBenchmark {
         chars[random.nextInt(last.length())] = (char) (random.nextInt(26) + 'a');
         last = new String(chars);
         attributesList.add(Attributes.of(key, last));
+        labelValues.add(last);
       }
-      Collections.shuffle(attributesList);
+      // Shuffle both lists identically so labelValues[i] matches the label of attributesList[i].
+      Random shuffleRandom = new Random(INITIAL_SEED);
+      Collections.shuffle(attributesList, shuffleRandom);
+      Collections.shuffle(labelValues, new Random(INITIAL_SEED));
 
-      if (bound) {
-        boundInstruments =
-            bindInstruments(meter, instrumentType, instrumentValueType, attributesList);
+      if (prometheus) {
+        if (bound) {
+          boundInstruments = bindPrometheusInstruments(instrumentType, labelValues);
+        } else {
+          prometheusInstrument = getPrometheusInstrument(instrumentType);
+        }
       } else {
-        instrument = getInstrument(meter, instrumentType, instrumentValueType);
+        if (bound) {
+          boundInstruments =
+              bindInstruments(meter, instrumentType, instrumentValueType, attributesList);
+        } else {
+          instrument = getInstrument(meter, instrumentType, instrumentValueType);
+        }
       }
 
       measurements = new ArrayList<>(RECORDS_PER_INVOCATION);
@@ -279,12 +311,19 @@ public class MetricRecordBenchmark {
     // Per-thread series order: at a given i, different threads hit different series (no lockstep).
     int[] order = threadState.order;
     if (benchmarkState.bound) {
-      // Bound: record straight to the pre-resolved bound instrument for the series — no per-record
-      // Attributes lookup.
+      // Bound path is shared between OTel and Prometheus: both resolve the series once up front
+      // and record straight to the pre-resolved handle.
       List<BoundInstrument> boundInstruments = benchmarkState.boundInstruments;
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
         long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
         boundInstruments.get(order[i % order.length]).record(value);
+      }
+    } else if (benchmarkState.prometheus) {
+      PrometheusInstrument prometheusInstrument = benchmarkState.prometheusInstrument;
+      for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
+        String label = benchmarkState.labelValues.get(order[i % order.length]);
+        long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
+        prometheusInstrument.record(value, label);
       }
     } else {
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
@@ -314,6 +353,10 @@ public class MetricRecordBenchmark {
 
   private interface Instrument {
     void record(long value, Attributes attributes);
+  }
+
+  private interface PrometheusInstrument {
+    void record(long value, String labelValue);
   }
 
   private static Instrument getInstrument(
@@ -346,6 +389,101 @@ public class MetricRecordBenchmark {
   @FunctionalInterface
   private interface BoundInstrument {
     void record(long value);
+  }
+
+  /**
+   * Prometheus counterpart to {@link #getInstrument}. Uses the newer {@code
+   * io.prometheus.metrics.core.metrics.*} API. Selects the Prometheus family instrument based on
+   * the OTel instrument type; each record does a {@code labelValues(...)} lookup per call
+   * (equivalent to OTel unbound).
+   */
+  @SuppressWarnings("LongDoubleConversion")
+  private static PrometheusInstrument getPrometheusInstrument(InstrumentType instrumentType) {
+    String name = "instrument";
+    switch (instrumentType) {
+      case COUNTER:
+        {
+          Counter counter = Counter.builder().name(name).help(name).labelNames("key").build();
+          return (value, label) -> counter.labelValues(label).inc(value);
+        }
+      case UP_DOWN_COUNTER:
+        {
+          Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
+          return (value, label) -> gauge.labelValues(label).inc(value);
+        }
+      case GAUGE:
+        {
+          Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
+          return (value, label) -> gauge.labelValues(label).set(value);
+        }
+      case HISTOGRAM:
+        {
+          // Default to classic histogram (matches OTel HISTOGRAM_EXPLICIT). The exponential
+          // variant would require .nativeOnly() but the OTel benchmark's default is explicit
+          // buckets. Both aggregations of the OTel benchmark share this path for simplicity.
+          Histogram histogram =
+              Histogram.builder().name(name).help(name).labelNames("key").classicOnly().build();
+          return (value, label) -> histogram.labelValues(label).observe(value);
+        }
+      case OBSERVABLE_COUNTER:
+      case OBSERVABLE_UP_DOWN_COUNTER:
+      case OBSERVABLE_GAUGE:
+    }
+    throw new IllegalArgumentException();
+  }
+
+  /**
+   * Prometheus counterpart to {@link #bindInstruments}. Pre-resolves the {@code labelValues(...)}
+   * DataPoint for each label so the record loop can call {@code observe/inc/set} directly.
+   */
+  @SuppressWarnings("LongDoubleConversion")
+  private static List<BoundInstrument> bindPrometheusInstruments(
+      InstrumentType instrumentType, List<String> labelValues) {
+    String name = "instrument";
+    List<BoundInstrument> result = new ArrayList<>(labelValues.size());
+    switch (instrumentType) {
+      case COUNTER:
+        {
+          Counter counter = Counter.builder().name(name).help(name).labelNames("key").build();
+          for (String label : labelValues) {
+            CounterDataPoint dp = counter.labelValues(label);
+            result.add(value -> dp.inc(value));
+          }
+          return result;
+        }
+      case UP_DOWN_COUNTER:
+        {
+          Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
+          for (String label : labelValues) {
+            GaugeDataPoint dp = gauge.labelValues(label);
+            result.add(value -> dp.inc(value));
+          }
+          return result;
+        }
+      case GAUGE:
+        {
+          Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
+          for (String label : labelValues) {
+            GaugeDataPoint dp = gauge.labelValues(label);
+            result.add(value -> dp.set(value));
+          }
+          return result;
+        }
+      case HISTOGRAM:
+        {
+          Histogram histogram =
+              Histogram.builder().name(name).help(name).labelNames("key").classicOnly().build();
+          for (String label : labelValues) {
+            DistributionDataPoint dp = histogram.labelValues(label);
+            result.add(value -> dp.observe(value));
+          }
+          return result;
+        }
+      case OBSERVABLE_COUNTER:
+      case OBSERVABLE_UP_DOWN_COUNTER:
+      case OBSERVABLE_GAUGE:
+    }
+    throw new IllegalArgumentException();
   }
 
   /**

@@ -28,4 +28,7 @@ dependencies {
 
   jmh(project(":sdk:testing"))
   jmh(project(":api:incubator"))
+
+  // For exploratory MetricRecordBenchmark prometheus comparison; not a runtime dependency.
+  jmh("io.prometheus:prometheus-metrics-core:1.8.0")
 }
