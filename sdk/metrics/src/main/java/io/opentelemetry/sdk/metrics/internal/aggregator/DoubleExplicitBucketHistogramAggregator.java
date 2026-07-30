@@ -178,11 +178,11 @@ public final class DoubleExplicitBucketHistogramAggregator
       for (int i = 0; i < bucketCount; i++) {
         this.bucketCounts[i] = AdderUtil.createLongAdder();
       }
-      // Fixed at 4 (power of 2 so the probe mask compiles to a bitwise AND). Small enough to
-      // keep per-handle memory footprint low at high cardinality where per-handle contention is
-      // naturally minimal (many threads spread across many handles); large enough to distribute
-      // 4-way single-handle contention with acceptable collision rates.
-      int stripes = 4;
+      // Sized to NCPUS (rounded up to a power of 2 so the probe mask compiles to a bitwise AND).
+      // NCPUS is an upper bound on threads simultaneously executing, which bounds the useful
+      // stripe count for handling per-handle contention. See PR discussion / benchmarks for the
+      // rationale.
+      int stripes = roundUpToPowerOfTwo(Runtime.getRuntime().availableProcessors());
       this.stripedStartedCounter = new AtomicLong[stripes];
       for (int i = 0; i < stripes; i++) {
         this.stripedStartedCounter[i] = new AtomicLong();
@@ -360,6 +360,15 @@ public final class DoubleExplicitBucketHistogramAggregator
         total += adder.sum();
       }
       return total;
+    }
+
+    /** Smallest power of 2 &gt;= {@code n}, with a floor of 1. */
+    private static int roundUpToPowerOfTwo(int n) {
+      if (n <= 1) {
+        return 1;
+      }
+      int highest = Integer.highestOneBit(n);
+      return highest == n ? highest : highest << 1;
     }
   }
 }
