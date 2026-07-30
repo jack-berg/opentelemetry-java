@@ -16,6 +16,7 @@ import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.internal.concurrent.AdderUtil;
 import io.opentelemetry.sdk.metrics.internal.concurrent.DoubleAdder;
+import io.opentelemetry.sdk.metrics.internal.concurrent.LongAdder;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableHistogramPointData;
 import io.opentelemetry.sdk.metrics.internal.data.ImmutableMetricData;
@@ -29,7 +30,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import javax.annotation.Nullable;
 
@@ -100,8 +100,8 @@ public final class DoubleExplicitBucketHistogramAggregator
   /**
    * Lock-free histogram handle inspired by the Prometheus Java client's classic histogram.
    *
-   * <p>Bucket counts use {@link AtomicLongArray}; running sum uses {@link DoubleAdder}; min and max
-   * use CAS loops on volatile long bit patterns with a fast-exit for non-extremes. Total count is
+   * <p>Bucket counts and running sum use {@link LongAdder} / {@link DoubleAdder}; min and max use
+   * CAS loops on volatile long bit patterns with a fast-exit for non-extremes. Total count is
    * derived from bucket counts at collect.
    *
    * <p>A thread-striped {@link AtomicLong} array coordinates record and collect. Its sign bit
@@ -130,13 +130,7 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final double[] boundaries;
     private final boolean recordMinMax;
 
-    // Bucket counts as a single AtomicLongArray for smaller per-handle footprint (one heap object
-    // with contiguous longs) versus LongAdder[N] (N separate objects with their own base + cells).
-    // Trade-off: same-bucket concurrent increments serialize on one CAS instead of striping across
-    // Striped64 cells. For realistic cardinalities the per-bucket contention is very low; for
-    // pathological single-series high-contention benchmarks (card=1 threads=4) this is a modest
-    // regression.
-    private final AtomicLongArray bucketCounts;
+    private final LongAdder[] bucketCounts;
     private final DoubleAdder sum = AdderUtil.createDoubleAdder();
 
     // Min / max as raw double bits so they can be CAS-updated via AtomicLongFieldUpdater. Updated
@@ -180,7 +174,10 @@ public final class DoubleExplicitBucketHistogramAggregator
       this.boundaries = boundaries;
       this.recordMinMax = recordMinMax;
       int bucketCount = boundaries.length + 1;
-      this.bucketCounts = new AtomicLongArray(bucketCount);
+      this.bucketCounts = new LongAdder[bucketCount];
+      for (int i = 0; i < bucketCount; i++) {
+        this.bucketCounts[i] = AdderUtil.createLongAdder();
+      }
       // Sized to NCPUS (rounded up to a power of 2 so the probe mask compiles to a bitwise AND).
       // NCPUS is an upper bound on threads simultaneously executing, which bounds the useful
       // stripe count for handling per-handle contention. See PR discussion / benchmarks for the
@@ -246,7 +243,7 @@ public final class DoubleExplicitBucketHistogramAggregator
           updateMax(value);
         }
       } finally {
-        bucketCounts.incrementAndGet(bucketIndex);
+        bucketCounts[bucketIndex].increment();
       }
     }
 
@@ -299,8 +296,8 @@ public final class DoubleExplicitBucketHistogramAggregator
 
       // Phase 3: snapshot (and reset if delta) with recorders quiescent.
       long totalCount = 0;
-      for (int i = 0; i < bucketCounts.length(); i++) {
-        long c = reset ? bucketCounts.getAndSet(i, 0) : bucketCounts.get(i);
+      for (int i = 0; i < bucketCounts.length; i++) {
+        long c = reset ? bucketCounts[i].sumThenReset() : bucketCounts[i].sum();
         countsScratch[i] = c;
         totalCount += c;
       }
@@ -359,8 +356,8 @@ public final class DoubleExplicitBucketHistogramAggregator
 
     private long bucketSumTotal() {
       long total = 0;
-      for (int i = 0, len = bucketCounts.length(); i < len; i++) {
-        total += bucketCounts.get(i);
+      for (LongAdder adder : bucketCounts) {
+        total += adder.sum();
       }
       return total;
     }
