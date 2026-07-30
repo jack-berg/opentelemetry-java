@@ -10,7 +10,6 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.common.internal.PrimitiveLongList;
-import io.opentelemetry.sdk.common.internal.ThrottlingLogger;
 import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.data.DoubleExemplarData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
@@ -30,13 +29,9 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.DoubleAccumulator;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import javax.annotation.Nullable;
-import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement;
 
 /**
  * Aggregator that generates explicit bucket histograms.
@@ -106,7 +101,8 @@ public final class DoubleExplicitBucketHistogramAggregator
    * Lock-free histogram handle inspired by the Prometheus Java client's classic histogram.
    *
    * <p>Bucket counts and running sum use {@link LongAdder} / {@link DoubleAdder}; min and max use
-   * {@link DoubleAccumulator}. Total count is derived from bucket counts at collect.
+   * CAS loops on volatile long bit patterns with a fast-exit for non-extremes. Total count is
+   * derived from bucket counts at collect.
    *
    * <p>A thread-striped {@link AtomicLong} array coordinates record and collect. Its sign bit
    * signals "collect in progress"; recorders back out and spin when they observe it. This prevents
@@ -117,23 +113,18 @@ public final class DoubleExplicitBucketHistogramAggregator
    * write publishes the prior sum/min/max writes, so the collector's wait for {@code
    * sum(bucketCounts) >= expected} doubles as a barrier for the whole observation.
    *
-   * <p>Wedge trade-off: a recorder that has committed its stripe reservation (successful CAS) but
-   * has not yet published its bucket increment is expected to complete quickly. If it doesn't —
-   * long preemption, an exception thrown inside the record body (e.g. {@code OutOfMemoryError} from
-   * a Striped64 cell allocation), thread death, etc. — Phase 2's wait would spin forever on a
-   * bucket increment that will never arrive. To keep the handle live, Phase 2 imposes a generous
-   * timeout: on expiry it takes the snapshot as-is, logs a throttled warning, and accounts for the
-   * missing observation(s) in {@link #bucketResetOffset} so future collects can make progress. The
-   * trade-off is that a wedged observation is silently lost from that cycle's snapshot.
+   * <p>Wedge trade-off: a recorder that has committed its stripe reservation (successful CAS) is
+   * guaranteed to publish its bucket increment via a {@code try/finally} in {@link
+   * #doRecordDouble}, even if the sum/min/max writes throw ({@code OutOfMemoryError} from a
+   * Striped64 cell allocation, thread death, etc.). This keeps Phase 2's wait bounded by recorder
+   * progress rather than requiring a timeout. The trade-off is that the failing observation may
+   * have partial sum/min/max (bucket count includes it, but sum may be behind by one value) — a
+   * single-observation blip rather than a permanent skew.
    */
-  @IgnoreJRERequirement // DoubleAccumulator is Java 8; not in the API 23 signature.
   static final class Handle extends AggregatorHandle<HistogramPointData> {
-    private static final Logger logger =
-        Logger.getLogger(DoubleExplicitBucketHistogramAggregator.class.getName());
     private static final long COLLECT_BIT = 1L << 63;
-    private static final long PHASE2_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(1);
-
-    private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
+    private static final long MIN_INIT_BITS = Double.doubleToRawLongBits(Double.POSITIVE_INFINITY);
+    private static final long MAX_INIT_BITS = Double.doubleToRawLongBits(Double.NEGATIVE_INFINITY);
 
     private final List<Double> boundaryList;
     private final double[] boundaries;
@@ -142,14 +133,19 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final LongAdder[] bucketCounts;
     private final DoubleAdder sum = AdderUtil.createDoubleAdder();
 
-    // DoubleAccumulator.accumulate skips its CAS when the accumulator function returns the
-    // current value, so steady-state updates (where a new observation is rarely a new extreme)
-    // don't touch memory. Always allocated for code simplicity; when recordMinMax is false the
-    // accumulate calls are skipped and these stay at their identity values.
-    private final DoubleAccumulator min =
-        new DoubleAccumulator(Double::min, Double.POSITIVE_INFINITY);
-    private final DoubleAccumulator max =
-        new DoubleAccumulator(Double::max, Double.NEGATIVE_INFINITY);
+    // Min / max as raw double bits so they can be CAS-updated via AtomicLongFieldUpdater. Updated
+    // via CAS loops that fast-exit when the observation isn't a new extreme — the common
+    // steady-state case has no memory write.
+    @SuppressWarnings("UnusedVariable")
+    private volatile long minBits = MIN_INIT_BITS;
+
+    @SuppressWarnings("UnusedVariable")
+    private volatile long maxBits = MAX_INIT_BITS;
+
+    private static final AtomicLongFieldUpdater<Handle> MIN_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "minBits");
+    private static final AtomicLongFieldUpdater<Handle> MAX_BITS =
+        AtomicLongFieldUpdater.newUpdater(Handle.class, "maxBits");
 
     // Power-of-2 length so the stripe probe is a bitwise AND with stripeMask.
     private final AtomicLong[] stripedStartedCounter;
@@ -206,6 +202,10 @@ public final class DoubleExplicitBucketHistogramAggregator
     @Override
     @SuppressWarnings("ThreadPriorityCheck")
     protected void doRecordDouble(double value) {
+      // Compute the bucket index before reserving on the stripe so that a failure here can't
+      // leave a stranded reservation.
+      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
+
       // Reserve a pre-flip slot on our stripe via CAS. Increment only when the bit is clear at
       // the time of the CAS; otherwise spin until the collector's Phase 4 clears the bit and
       // retry. This avoids the inc-then-dec back-out pattern, which could leave a transient +1
@@ -228,14 +228,43 @@ public final class DoubleExplicitBucketHistogramAggregator
         // loop and reevaluate.
       }
 
-      // Bucket increment must be last: it publishes the sum/min/max writes for the collector.
-      int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
-      sum.add(value);
-      if (recordMinMax) {
-        min.accumulate(value);
-        max.accumulate(value);
+      // Bucket increment in a finally so it happens even on exception. This makes bucket publish
+      // a guaranteed post-condition of a successful reservation, so Phase 2's wait can always
+      // progress. On the failure path the observation has partial sum/min/max but a consistent
+      // count.
+      try {
+        sum.add(value);
+        if (recordMinMax) {
+          updateMin(value);
+          updateMax(value);
+        }
+      } finally {
+        bucketCounts[bucketIndex].increment();
       }
-      bucketCounts[bucketIndex].increment();
+    }
+
+    /** Fast-exits without a CAS when {@code value} is not smaller than the current min. */
+    private void updateMin(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = minBits;
+        if (value >= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MIN_BITS.compareAndSet(this, cur, newBits));
+    }
+
+    /** Fast-exits without a CAS when {@code value} is not larger than the current max. */
+    private void updateMax(double value) {
+      long newBits = Double.doubleToRawLongBits(value);
+      long cur;
+      do {
+        cur = maxBits;
+        if (value <= Double.longBitsToDouble(cur)) {
+          return;
+        }
+      } while (!MAX_BITS.compareAndSet(this, cur, newBits));
     }
 
     @Override
@@ -253,29 +282,11 @@ public final class DoubleExplicitBucketHistogramAggregator
       }
 
       // Phase 2: wait for pre-flip recorders to publish their bucket increments. Post-flip
-      // recorders are spinning on the collect bit, so nothing new arrives. Comparing against the
-      // absolute cumulativeStarted (adjusted by bucketResetOffset for any counts drained by prior
-      // delta resets) means the check works uniformly regardless of temporality.
-      //
-      // Bounded wait: if a recorder committed its stripe reservation but never published its
-      // bucket increment (long preemption, exception in the record body, etc.), we don't want to
-      // spin forever. On timeout, account for the missing observations via bucketResetOffset so
-      // future collects can progress, and warn.
-      long phase2Start = System.nanoTime();
+      // recorders are spinning on the collect bit, so nothing new arrives. Because
+      // doRecordDouble publishes the bucket increment in a finally block, every successful
+      // stripe reservation is guaranteed to eventually reach the bucket — the wait is bounded by
+      // recorder progress, not clock time.
       while (bucketSumTotal() + bucketResetOffset < cumulativeStarted) {
-        if (System.nanoTime() - phase2Start > PHASE2_TIMEOUT_NANOS) {
-          long missing = cumulativeStarted - bucketSumTotal() - bucketResetOffset;
-          if (missing > 0) {
-            bucketResetOffset += missing;
-            throttlingLogger.log(
-                Level.WARNING,
-                "Histogram collect wait timed out; "
-                    + missing
-                    + " observation(s) missing from this cycle's snapshot. A recorder likely "
-                    + "failed or was preempted between stripe reservation and bucket publish.");
-          }
-          break;
-        }
         Thread.yield();
       }
 
@@ -294,8 +305,10 @@ public final class DoubleExplicitBucketHistogramAggregator
       double snapshotMin = Double.POSITIVE_INFINITY;
       double snapshotMax = Double.NEGATIVE_INFINITY;
       if (recordMinMax) {
-        snapshotMin = reset ? min.getThenReset() : min.get();
-        snapshotMax = reset ? max.getThenReset() : max.get();
+        long minSnapshot = reset ? MIN_BITS.getAndSet(this, MIN_INIT_BITS) : minBits;
+        long maxSnapshot = reset ? MAX_BITS.getAndSet(this, MAX_INIT_BITS) : maxBits;
+        snapshotMin = Double.longBitsToDouble(minSnapshot);
+        snapshotMax = Double.longBitsToDouble(maxSnapshot);
       }
 
       // Phase 4: clear the collect bit. addAndGet(COLLECT_BIT) toggles the sign bit off via
