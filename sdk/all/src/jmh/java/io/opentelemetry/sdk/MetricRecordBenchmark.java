@@ -115,7 +115,7 @@ public class MetricRecordBenchmark {
 
     @Param AggregationTemporality aggregationTemporality;
 
-    @Param({"1", "128"})
+    @Param({"1", "4", "32", "128"})
     int cardinality;
 
     // Whether to record through bound instruments (Extended*#bind(Attributes)), which resolve the

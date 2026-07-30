@@ -178,7 +178,11 @@ public final class DoubleExplicitBucketHistogramAggregator
       for (int i = 0; i < bucketCount; i++) {
         this.bucketCounts[i] = AdderUtil.createLongAdder();
       }
-      int stripes = roundUpToPowerOfTwo(Runtime.getRuntime().availableProcessors());
+      // Fixed at 4 (power of 2 so the probe mask compiles to a bitwise AND). Small enough to
+      // keep per-handle memory footprint low at high cardinality where per-handle contention is
+      // naturally minimal (many threads spread across many handles); large enough to distribute
+      // 4-way single-handle contention with acceptable collision rates.
+      int stripes = 4;
       this.stripedStartedCounter = new AtomicLong[stripes];
       for (int i = 0; i < stripes; i++) {
         this.stripedStartedCounter[i] = new AtomicLong();
@@ -356,15 +360,6 @@ public final class DoubleExplicitBucketHistogramAggregator
         total += adder.sum();
       }
       return total;
-    }
-
-    /** Smallest power of 2 >= {@code n}, with a floor of 1. */
-    private static int roundUpToPowerOfTwo(int n) {
-      if (n <= 1) {
-        return 1;
-      }
-      int highest = Integer.highestOneBit(n);
-      return highest == n ? highest : highest << 1;
     }
   }
 }
