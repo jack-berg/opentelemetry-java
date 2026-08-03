@@ -133,6 +133,12 @@ public final class DoubleExplicitBucketHistogramAggregator
     private final LongAdder[] bucketCounts;
     private final DoubleAdder sum = AdderUtil.createDoubleAdder();
 
+    // DIAGNOSTIC (Option B): count of observations that observed COLLECT_BIT set on their stripe
+    // increment and discarded. Included in Phase 2's wait to preserve the invariant
+    // bucketSumTotal + bucketResetOffset + discardedCount >= cumulativeStarted. Semantically
+    // lossy (observations dropped during collect windows); throwaway for benchmarking.
+    private final LongAdder discardedCount = AdderUtil.createLongAdder();
+
     // Min / max as raw double bits so they can be CAS-updated via AtomicLongFieldUpdater. Updated
     // via CAS loops that fast-exit when the observation isn't a new extreme — the common
     // steady-state case has no memory write.
@@ -210,26 +216,16 @@ public final class DoubleExplicitBucketHistogramAggregator
       // leave a stranded reservation.
       int bucketIndex = ExplicitBucketHistogramUtils.findBucketIndex(this.boundaries, value);
 
-      // Reserve a pre-flip slot on our stripe via CAS. Increment only when the bit is clear at
-      // the time of the CAS; otherwise spin until the collector's Phase 4 clears the bit and
-      // retry. This avoids the inc-then-dec back-out pattern, which could leave a transient +1
-      // on the stripe visible to a later Phase 1 if the recorder was preempted between the inc
-      // and dec across a collect cycle boundary.
+      // DIAGNOSTIC (Option B): incrementAndGet-based coordination. Post-flip observations are
+      // discarded (semantically lossy; NOT production-safe) and counted in discardedCount so
+      // Phase 2's wait remains balanced. This isolates the record-path cost of incrementAndGet
+      // vs get+CAS. NOT for merging.
       AtomicLong stripe =
           stripedStartedCounter[System.identityHashCode(Thread.currentThread()) & stripeMask];
-      while (true) {
-        long current = stripe.get();
-        if ((current & COLLECT_BIT) != 0) {
-          while ((stripe.get() & COLLECT_BIT) != 0) {
-            Thread.yield();
-          }
-          continue;
-        }
-        if (stripe.compareAndSet(current, current + 1)) {
-          break;
-        }
-        // CAS lost the race (either the bit was just set or another recorder incremented);
-        // loop and reevaluate.
+      long c = stripe.incrementAndGet();
+      if ((c & COLLECT_BIT) != 0) {
+        discardedCount.increment();
+        return;
       }
 
       // Bucket increment in a finally so it happens even on exception. This makes bucket publish
@@ -290,7 +286,7 @@ public final class DoubleExplicitBucketHistogramAggregator
       // doRecordDouble publishes the bucket increment in a finally block, every successful
       // stripe reservation is guaranteed to eventually reach the bucket — the wait is bounded by
       // recorder progress, not clock time.
-      while (bucketSumTotal() + bucketResetOffset < cumulativeStarted) {
+      while (bucketSumTotal() + bucketResetOffset + discardedCount.sum() < cumulativeStarted) {
         Thread.yield();
       }
 
