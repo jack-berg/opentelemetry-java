@@ -33,7 +33,9 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.Aggregation;
+import io.opentelemetry.sdk.metrics.Base2ExponentialHistogramOptions;
 import io.opentelemetry.sdk.metrics.ExemplarFilter;
+import io.opentelemetry.sdk.metrics.ExplicitBucketHistogramOptions;
 import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.InstrumentValueType;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
@@ -339,8 +341,14 @@ public class MetricRecordBenchmark {
     COUNTER_SUM(COUNTER, Aggregation.sum()),
     UP_DOWN_COUNTER_SUM(UP_DOWN_COUNTER, Aggregation.sum()),
     GAUGE_LAST_VALUE(GAUGE, Aggregation.lastValue()),
-    HISTOGRAM_EXPLICIT(HISTOGRAM, Aggregation.explicitBucketHistogram()),
-    HISTOGRAM_BASE2_EXPONENTIAL(HISTOGRAM, Aggregation.base2ExponentialBucketHistogram());
+    HISTOGRAM_EXPLICIT(
+        HISTOGRAM,
+        Aggregation.explicitBucketHistogram(
+            ExplicitBucketHistogramOptions.builder().setRecordMinMax(false).build())),
+    HISTOGRAM_BASE2_EXPONENTIAL(
+        HISTOGRAM,
+        Aggregation.base2ExponentialBucketHistogram(
+            Base2ExponentialHistogramOptions.builder().setRecordMinMax(false).build()));
 
     InstrumentTypeAndAggregation(InstrumentType instrumentType, Aggregation aggregation) {
       this.instrumentType = instrumentType;
