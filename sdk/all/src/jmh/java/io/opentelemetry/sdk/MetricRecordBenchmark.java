@@ -31,6 +31,7 @@ import io.opentelemetry.api.incubator.metrics.ExtendedLongUpDownCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.Aggregation;
 import io.opentelemetry.sdk.metrics.Base2ExponentialHistogramOptions;
@@ -309,7 +310,7 @@ public class MetricRecordBenchmark {
     record(benchmarkState, threadState);
   }
 
-  private static void record(BenchmarkState benchmarkState, ThreadState threadState) {
+  static void record(BenchmarkState benchmarkState, ThreadState threadState) {
     // Per-thread series order: at a given i, different threads hit different series (no lockstep).
     int[] order = threadState.order;
     if (benchmarkState.bound) {
@@ -318,7 +319,7 @@ public class MetricRecordBenchmark {
       List<BoundInstrument> boundInstruments = benchmarkState.boundInstruments;
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
         long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
-        boundInstruments.get(order[i % order.length]).record(value);
+        boundInstruments.get(order[i % order.length]).record(value, Context.root());
       }
     } else if (benchmarkState.prometheus) {
       PrometheusInstrument prometheusInstrument = benchmarkState.prometheusInstrument;
@@ -331,7 +332,7 @@ public class MetricRecordBenchmark {
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
         Attributes attributes = benchmarkState.attributesList.get(order[i % order.length]);
         long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
-        benchmarkState.instrument.record(value, attributes);
+        benchmarkState.instrument.record(value, attributes, Context.root());
       }
     }
   }
@@ -360,7 +361,7 @@ public class MetricRecordBenchmark {
   }
 
   private interface Instrument {
-    void record(long value, Attributes attributes);
+    void record(long value, Attributes attributes, Context context);
   }
 
   private interface PrometheusInstrument {
@@ -396,7 +397,7 @@ public class MetricRecordBenchmark {
 
   @FunctionalInterface
   private interface BoundInstrument {
-    void record(long value);
+    void record(long value, Context context);
   }
 
   /**
@@ -455,7 +456,7 @@ public class MetricRecordBenchmark {
           Counter counter = Counter.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             CounterDataPoint dp = counter.labelValues(label);
-            result.add(value -> dp.inc(value));
+            result.add((value, context) -> dp.inc(value));
           }
           return result;
         }
@@ -464,7 +465,7 @@ public class MetricRecordBenchmark {
           Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             GaugeDataPoint dp = gauge.labelValues(label);
-            result.add(value -> dp.inc(value));
+            result.add((value, context) -> dp.inc(value));
           }
           return result;
         }
@@ -473,7 +474,7 @@ public class MetricRecordBenchmark {
           Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             GaugeDataPoint dp = gauge.labelValues(label);
-            result.add(value -> dp.set(value));
+            result.add((value, context) -> dp.set(value));
           }
           return result;
         }
@@ -483,7 +484,7 @@ public class MetricRecordBenchmark {
               Histogram.builder().name(name).help(name).labelNames("key").classicOnly().build();
           for (String label : labelValues) {
             DistributionDataPoint dp = histogram.labelValues(label);
-            result.add(value -> dp.observe(value));
+            result.add((value, context) -> dp.observe(value));
           }
           return result;
         }
