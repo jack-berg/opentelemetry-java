@@ -25,40 +25,59 @@ final class ExtendedSdkLongCounter extends SdkLongCounter
   // itself. When set, the add() methods record straight to this handle instead of resolving the
   // series from the storage on each call.
   @Nullable private final BoundStorageHandle boundHandle;
-
+  // Per-binding original attributes, passed to the handle on every record. Non-null iff
+  // boundHandle is non-null.
+  @Nullable private final Attributes boundAttributes;
   private ExtendedSdkLongCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    this(descriptor, sdkMeter, storage, null);
+    this(descriptor, sdkMeter, storage, null, null);
   }
 
   private ExtendedSdkLongCounter(
       InstrumentDescriptor descriptor,
       SdkMeter sdkMeter,
       WriteableMetricStorage storage,
-      @Nullable BoundStorageHandle boundHandle) {
+      @Nullable BoundStorageHandle boundHandle,
+      @Nullable Attributes boundAttributes) {
     super(descriptor, sdkMeter, storage);
     this.boundHandle = boundHandle;
+    this.boundAttributes = boundAttributes;
   }
 
   @Override
   public BoundLongCounter bind(Attributes attributes) {
-    return new ExtendedSdkLongCounter(getDescriptor(), sdkMeter, storage, storage.bind(attributes));
+    return new ExtendedSdkLongCounter(
+        getDescriptor(), sdkMeter, storage, storage.bind(attributes), attributes);
   }
 
   @Override
   public void add(long value) {
-    add(value, Context.current());
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.isEnabled()) {
+        return;
+      }
+      Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+      boundHandle.recordLong(value, boundAttributes, context);
+    } else {
+      super.add(value);
+    }
   }
 
   @Override
   public void add(long value, Context context) {
-    if (!validateNonNegative(value)) {
-      return;
-    }
-    if (boundHandle != null) {
-      boundHandle.recordLong(value, context);
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.isEnabled()) {
+        return;
+      }
+      boundHandle.recordLong(value, boundAttributes, context);
     } else {
-      storage.recordLong(value, Attributes.empty(), context);
+      super.add(value, Attributes.empty(), context);
     }
   }
 

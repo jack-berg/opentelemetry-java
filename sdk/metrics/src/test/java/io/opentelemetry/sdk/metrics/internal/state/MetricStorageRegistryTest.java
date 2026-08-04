@@ -116,15 +116,20 @@ class MetricStorageRegistryTest {
     public BoundStorageHandle bind(Attributes attributes) {
       return new BoundStorageHandle() {
         @Override
-        public void recordLong(long value, Context context) {}
+        public void recordLong(long value, Attributes attributes, Context context) {}
 
         @Override
-        public void recordDouble(double value, Context context) {}
+        public void recordDouble(double value, Attributes attributes, Context context) {}
       };
     }
 
     @Override
     public boolean isEnabled() {
+      return true;
+    }
+
+    @Override
+    public boolean shouldRecordDouble(double value, Attributes attributes) {
       return true;
     }
 

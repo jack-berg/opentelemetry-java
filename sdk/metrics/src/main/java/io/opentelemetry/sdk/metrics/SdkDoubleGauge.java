@@ -13,6 +13,7 @@ import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 
@@ -20,12 +21,15 @@ class SdkDoubleGauge extends AbstractInstrument implements DoubleGauge {
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkDoubleGauge(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -35,17 +39,28 @@ class SdkDoubleGauge extends AbstractInstrument implements DoubleGauge {
 
   @Override
   public void set(double value, Attributes attributes) {
-    storage.recordDouble(value, attributes, Context.current());
+    if (!storage.shouldRecordDouble(value, attributes)) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(value, attributes, context);
   }
 
   @Override
   public void set(double value, Attributes attributes, Context context) {
+    if (!storage.shouldRecordDouble(value, attributes)) {
+      return;
+    }
     storage.recordDouble(value, attributes, context);
   }
 
   @Override
   public void set(double value) {
-    set(value, Attributes.empty());
+    if (!storage.shouldRecordDouble(value, Attributes.empty())) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(value, Attributes.empty(), context);
   }
 
   static class SdkDoubleGaugeBuilder implements DoubleGaugeBuilder {

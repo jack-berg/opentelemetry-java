@@ -13,6 +13,7 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.metrics.internal.descriptor.Advice;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 
@@ -20,11 +21,14 @@ class SdkLongGauge extends AbstractInstrument implements LongGauge {
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkLongGauge(InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -34,17 +38,28 @@ class SdkLongGauge extends AbstractInstrument implements LongGauge {
 
   @Override
   public void set(long value, Attributes attributes) {
-    storage.recordLong(value, attributes, Context.current());
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(value, attributes, context);
   }
 
   @Override
   public void set(long value, Attributes attributes, Context context) {
+    if (!storage.isEnabled()) {
+      return;
+    }
     storage.recordLong(value, attributes, context);
   }
 
   @Override
   public void set(long value) {
-    set(value, Attributes.empty());
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(value, Attributes.empty(), context);
   }
 
   static class SdkLongGaugeBuilder implements LongGaugeBuilder {

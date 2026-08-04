@@ -35,4 +35,11 @@ public interface WriteableMetricStorage {
    * otherwise (i.e. noop / empty metric storage is installed).
    */
   boolean isEnabled();
+
+  /**
+   * Returns {@code true} if the storage should record the given double measurement, {@code false}
+   * to drop it. Combines {@link #isEnabled()} with a NaN check (logged). Used by bound-instrument
+   * record paths to gate before invoking a {@link BoundStorageHandle}.
+   */
+  boolean shouldRecordDouble(double value, Attributes attributes);
 }

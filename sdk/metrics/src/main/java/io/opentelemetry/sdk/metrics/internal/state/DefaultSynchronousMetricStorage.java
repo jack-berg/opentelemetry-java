@@ -85,28 +85,29 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
             reader, descriptor, aggregator, processor, clock, maxCardinality, enabled);
   }
 
+  /**
+   * Records a long measurement. Caller is expected to gate on {@link #isEnabled()} before
+   * invoking; this method skips the check as a fast-path optimization for the direct SDK caller
+   * path. Aggregators reached via {@link SdkMeter}'s multi-storage iteration path re-check
+   * per-storage.
+   */
   @Override
-  public void recordLong(long value, Attributes attributes, Context context) {
-    if (!enabled) {
-      return;
-    }
-    doRecordLong(value, attributes, context);
-  }
+  public abstract void recordLong(long value, Attributes attributes, Context context);
 
+  /**
+   * Records a double measurement. Caller is expected to gate on {@link #shouldRecordDouble} before
+   * invoking; this method skips the check.
+   */
   @Override
-  public void recordDouble(double value, Attributes attributes, Context context) {
-    if (!shouldRecordDouble(value, attributes)) {
-      return;
-    }
-    doRecordDouble(value, attributes, context);
-  }
+  public abstract void recordDouble(double value, Attributes attributes, Context context);
 
   /**
    * Returns true if a double {@code value} should be recorded. Returns false (dropping the
    * measurement) when recording is disabled, or when {@code value} is NaN, logging in the latter
    * case. Shared by the unbound and bound record paths.
    */
-  final boolean shouldRecordDouble(double value, Attributes attributes) {
+  @Override
+  public final boolean shouldRecordDouble(double value, Attributes attributes) {
     if (!enabled) {
       return false;
     }
@@ -122,10 +123,6 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
     }
     return true;
   }
-
-  abstract void doRecordLong(long value, Attributes attributes, Context context);
-
-  abstract void doRecordDouble(double value, Attributes attributes, Context context);
 
   @Override
   public void setEnabled(boolean enabled) {

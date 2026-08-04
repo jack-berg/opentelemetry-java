@@ -21,45 +21,58 @@ import javax.annotation.Nullable;
 final class ExtendedSdkDoubleCounter extends SdkDoubleCounter
     implements ExtendedDoubleCounter, BoundDoubleCounter {
 
-  // Non-null only when this is a bound instance returned from bind(); null for the instrument
-  // itself. When set, the add() methods record straight to this handle instead of resolving the
-  // series from the storage on each call.
   @Nullable private final BoundStorageHandle boundHandle;
-
+  @Nullable private final Attributes boundAttributes;
   private ExtendedSdkDoubleCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    this(descriptor, sdkMeter, storage, null);
+    this(descriptor, sdkMeter, storage, null, null);
   }
 
   private ExtendedSdkDoubleCounter(
       InstrumentDescriptor descriptor,
       SdkMeter sdkMeter,
       WriteableMetricStorage storage,
-      @Nullable BoundStorageHandle boundHandle) {
+      @Nullable BoundStorageHandle boundHandle,
+      @Nullable Attributes boundAttributes) {
     super(descriptor, sdkMeter, storage);
     this.boundHandle = boundHandle;
+    this.boundAttributes = boundAttributes;
   }
 
   @Override
   public BoundDoubleCounter bind(Attributes attributes) {
     return new ExtendedSdkDoubleCounter(
-        getDescriptor(), sdkMeter, storage, storage.bind(attributes));
+        getDescriptor(), sdkMeter, storage, storage.bind(attributes), attributes);
   }
 
   @Override
   public void add(double value) {
-    add(value, Context.current());
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.shouldRecordDouble(value, boundAttributes)) {
+        return;
+      }
+      Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+      boundHandle.recordDouble(value, boundAttributes, context);
+    } else {
+      super.add(value);
+    }
   }
 
   @Override
   public void add(double value, Context context) {
-    if (!validateNonNegative(value)) {
-      return;
-    }
-    if (boundHandle != null) {
-      boundHandle.recordDouble(value, context);
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.shouldRecordDouble(value, boundAttributes)) {
+        return;
+      }
+      boundHandle.recordDouble(value, boundAttributes, context);
     } else {
-      storage.recordDouble(value, Attributes.empty(), context);
+      super.add(value, Attributes.empty(), context);
     }
   }
 

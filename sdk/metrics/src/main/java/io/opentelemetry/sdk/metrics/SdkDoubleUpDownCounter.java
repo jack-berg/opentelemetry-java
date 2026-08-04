@@ -13,6 +13,7 @@ import io.opentelemetry.api.metrics.ObservableDoubleUpDownCounter;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.metrics.internal.descriptor.Advice;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 
@@ -20,12 +21,15 @@ class SdkDoubleUpDownCounter extends AbstractInstrument implements DoubleUpDownC
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkDoubleUpDownCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -35,17 +39,28 @@ class SdkDoubleUpDownCounter extends AbstractInstrument implements DoubleUpDownC
 
   @Override
   public void add(double increment, Attributes attributes, Context context) {
+    if (!storage.shouldRecordDouble(increment, attributes)) {
+      return;
+    }
     storage.recordDouble(increment, attributes, context);
   }
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, Context.current());
+    if (!storage.shouldRecordDouble(increment, attributes)) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(increment, attributes, context);
   }
 
   @Override
   public void add(double increment) {
-    add(increment, Attributes.empty());
+    if (!storage.shouldRecordDouble(increment, Attributes.empty())) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(increment, Attributes.empty(), context);
   }
 
   static class SdkDoubleUpDownCounterBuilder implements DoubleUpDownCounterBuilder {

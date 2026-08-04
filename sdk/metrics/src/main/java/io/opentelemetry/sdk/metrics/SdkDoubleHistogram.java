@@ -13,6 +13,7 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.internal.ThrottlingLogger;
 import io.opentelemetry.sdk.metrics.internal.aggregator.ExplicitBucketHistogramUtils;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.List;
 import java.util.Objects;
@@ -25,12 +26,15 @@ class SdkDoubleHistogram extends AbstractInstrument implements DoubleHistogram {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkDoubleHistogram(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -43,17 +47,34 @@ class SdkDoubleHistogram extends AbstractInstrument implements DoubleHistogram {
     if (!validateNonNegative(value)) {
       return;
     }
+    if (!storage.shouldRecordDouble(value, attributes)) {
+      return;
+    }
     storage.recordDouble(value, attributes, context);
   }
 
   @Override
   public void record(double value, Attributes attributes) {
-    record(value, attributes, Context.current());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    if (!storage.shouldRecordDouble(value, attributes)) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(value, attributes, context);
   }
 
   @Override
   public void record(double value) {
-    record(value, Attributes.empty());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    if (!storage.shouldRecordDouble(value, Attributes.empty())) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(value, Attributes.empty(), context);
   }
 
   /**

@@ -14,6 +14,7 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.internal.ThrottlingLogger;
 import io.opentelemetry.sdk.metrics.internal.descriptor.Advice;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -25,12 +26,15 @@ class SdkDoubleCounter extends AbstractInstrument implements DoubleCounter {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkDoubleCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -43,17 +47,34 @@ class SdkDoubleCounter extends AbstractInstrument implements DoubleCounter {
     if (!validateNonNegative(increment)) {
       return;
     }
+    if (!storage.shouldRecordDouble(increment, attributes)) {
+      return;
+    }
     storage.recordDouble(increment, attributes, context);
   }
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, Context.current());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    if (!storage.shouldRecordDouble(increment, attributes)) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(increment, attributes, context);
   }
 
   @Override
   public void add(double increment) {
-    add(increment, Attributes.empty());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    if (!storage.shouldRecordDouble(increment, Attributes.empty())) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordDouble(increment, Attributes.empty(), context);
   }
 
   /**

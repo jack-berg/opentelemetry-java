@@ -25,41 +25,60 @@ final class ExtendedSdkLongHistogram extends SdkLongHistogram
   // itself. When set, the record() methods record straight to this handle instead of resolving the
   // series from the storage on each call.
   @Nullable private final BoundStorageHandle boundHandle;
-
+  // Per-binding original attributes, passed to the handle on every record so exemplar sampling
+  // sees the caller's original attributes even when distinct bindings collapse to the same
+  // underlying handle. Non-null iff boundHandle is non-null.
+  @Nullable private final Attributes boundAttributes;
   private ExtendedSdkLongHistogram(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    this(descriptor, sdkMeter, storage, null);
+    this(descriptor, sdkMeter, storage, null, null);
   }
 
   private ExtendedSdkLongHistogram(
       InstrumentDescriptor descriptor,
       SdkMeter sdkMeter,
       WriteableMetricStorage storage,
-      @Nullable BoundStorageHandle boundHandle) {
+      @Nullable BoundStorageHandle boundHandle,
+      @Nullable Attributes boundAttributes) {
     super(descriptor, sdkMeter, storage);
     this.boundHandle = boundHandle;
+    this.boundAttributes = boundAttributes;
   }
 
   @Override
   public BoundLongHistogram bind(Attributes attributes) {
     return new ExtendedSdkLongHistogram(
-        getDescriptor(), sdkMeter, storage, storage.bind(attributes));
+        getDescriptor(), sdkMeter, storage, storage.bind(attributes), attributes);
   }
 
   @Override
   public void record(long value) {
-    record(value, Context.current());
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.isEnabled()) {
+        return;
+      }
+      Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+      boundHandle.recordLong(value, boundAttributes, context);
+    } else {
+      super.record(value);
+    }
   }
 
   @Override
   public void record(long value, Context context) {
-    if (!validateNonNegative(value)) {
-      return;
-    }
-    if (boundHandle != null) {
-      boundHandle.recordLong(value, context);
+    if (boundHandle != null && boundAttributes != null) {
+      if (!validateNonNegative(value)) {
+        return;
+      }
+      if (!storage.isEnabled()) {
+        return;
+      }
+      boundHandle.recordLong(value, boundAttributes, context);
     } else {
-      storage.recordLong(value, Attributes.empty(), context);
+      super.record(value, Attributes.empty(), context);
     }
   }
 

@@ -14,6 +14,7 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.internal.ThrottlingLogger;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -26,12 +27,16 @@ class SdkLongCounter extends AbstractInstrument implements LongCounter {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  // See {@link SdkLongHistogram#exemplarsAlwaysOff}.
+  final boolean exemplarsAlwaysOff;
 
   SdkLongCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -44,17 +49,34 @@ class SdkLongCounter extends AbstractInstrument implements LongCounter {
     if (!validateNonNegative(increment)) {
       return;
     }
+    if (!storage.isEnabled()) {
+      return;
+    }
     storage.recordLong(increment, attributes, context);
   }
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, Context.current());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(increment, attributes, context);
   }
 
   @Override
   public void add(long increment) {
-    add(increment, Attributes.empty());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(increment, Attributes.empty(), context);
   }
 
   /**

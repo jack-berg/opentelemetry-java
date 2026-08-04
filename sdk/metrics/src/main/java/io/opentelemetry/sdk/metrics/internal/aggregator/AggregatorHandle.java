@@ -13,6 +13,7 @@ import io.opentelemetry.sdk.metrics.data.PointData;
 import io.opentelemetry.sdk.metrics.internal.exemplar.DoubleExemplarReservoir;
 import io.opentelemetry.sdk.metrics.internal.exemplar.ExemplarReservoirFactory;
 import io.opentelemetry.sdk.metrics.internal.exemplar.LongExemplarReservoir;
+import io.opentelemetry.sdk.metrics.internal.state.BoundStorageHandle;
 import java.util.List;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
@@ -28,7 +29,7 @@ import javax.annotation.concurrent.ThreadSafe;
  * at any time.
  */
 @ThreadSafe
-public abstract class AggregatorHandle<T extends PointData> {
+public abstract class AggregatorHandle<T extends PointData> implements BoundStorageHandle {
 
   private static final String UNSUPPORTED_LONG_MESSAGE =
       "This aggregator does not support long values.";
@@ -103,6 +104,7 @@ public abstract class AggregatorHandle<T extends PointData> {
     throw new UnsupportedOperationException(UNSUPPORTED_LONG_MESSAGE);
   }
 
+  @Override
   public void recordLong(long value, Attributes attributes, Context context) {
     throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
         .offerLongMeasurement(value, attributes, context);
@@ -120,6 +122,7 @@ public abstract class AggregatorHandle<T extends PointData> {
     throw new UnsupportedOperationException("This aggregator does not support long values.");
   }
 
+  @Override
   public final void recordDouble(double value, Attributes attributes, Context context) {
     throwUnsupportedIfNull(this.doubleReservoirFactory, UNSUPPORTED_DOUBLE_MESSAGE)
         .offerDoubleMeasurement(value, attributes, context);

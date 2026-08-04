@@ -114,7 +114,9 @@ public class SynchronousMetricStorageTest {
             testClock,
             /* enabled= */ true);
 
-    storage.recordDouble(Double.NaN, Attributes.empty(), Context.current());
+    // NaN checking is now the caller's responsibility, exposed via shouldRecordDouble. Sdk*
+    // instrument classes gate every double record on this before calling storage.recordDouble.
+    assertThat(storage.shouldRecordDouble(Double.NaN, Attributes.empty())).isFalse();
 
     logs.assertContains(
         "Instrument name has recorded measurement Not-a-Number (NaN) value with attributes {}. Dropping measurement.");

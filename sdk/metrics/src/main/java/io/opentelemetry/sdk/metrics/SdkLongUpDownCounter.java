@@ -13,6 +13,7 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongUpDownCounter;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.function.Consumer;
 
@@ -20,12 +21,15 @@ class SdkLongUpDownCounter extends AbstractInstrument implements LongUpDownCount
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  final boolean exemplarsAlwaysOff;
 
   SdkLongUpDownCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -35,17 +39,28 @@ class SdkLongUpDownCounter extends AbstractInstrument implements LongUpDownCount
 
   @Override
   public void add(long increment, Attributes attributes, Context context) {
+    if (!storage.isEnabled()) {
+      return;
+    }
     storage.recordLong(increment, attributes, context);
   }
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, Context.current());
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(increment, attributes, context);
   }
 
   @Override
   public void add(long increment) {
-    add(increment, Attributes.empty());
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(increment, Attributes.empty(), context);
   }
 
   static class SdkLongUpDownCounterBuilder implements LongUpDownCounterBuilder {

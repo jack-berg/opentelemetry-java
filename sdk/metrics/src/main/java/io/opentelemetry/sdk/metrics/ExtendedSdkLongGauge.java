@@ -20,41 +20,52 @@ import javax.annotation.Nullable;
 
 final class ExtendedSdkLongGauge extends SdkLongGauge implements ExtendedLongGauge, BoundLongGauge {
 
-  // Non-null only when this is a bound instance returned from bind(); null for the instrument
-  // itself. When set, the set() methods record straight to this handle instead of resolving the
-  // series from the storage on each call.
   @Nullable private final BoundStorageHandle boundHandle;
-
+  @Nullable private final Attributes boundAttributes;
   private ExtendedSdkLongGauge(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    this(descriptor, sdkMeter, storage, null);
+    this(descriptor, sdkMeter, storage, null, null);
   }
 
   private ExtendedSdkLongGauge(
       InstrumentDescriptor descriptor,
       SdkMeter sdkMeter,
       WriteableMetricStorage storage,
-      @Nullable BoundStorageHandle boundHandle) {
+      @Nullable BoundStorageHandle boundHandle,
+      @Nullable Attributes boundAttributes) {
     super(descriptor, sdkMeter, storage);
     this.boundHandle = boundHandle;
+    this.boundAttributes = boundAttributes;
   }
 
   @Override
   public BoundLongGauge bind(Attributes attributes) {
-    return new ExtendedSdkLongGauge(getDescriptor(), sdkMeter, storage, storage.bind(attributes));
+    return new ExtendedSdkLongGauge(
+        getDescriptor(), sdkMeter, storage, storage.bind(attributes), attributes);
   }
 
   @Override
   public void set(long value) {
-    set(value, Context.current());
+    if (boundHandle != null && boundAttributes != null) {
+      if (!storage.isEnabled()) {
+        return;
+      }
+      Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+      boundHandle.recordLong(value, boundAttributes, context);
+    } else {
+      super.set(value);
+    }
   }
 
   @Override
   public void set(long value, Context context) {
-    if (boundHandle != null) {
-      boundHandle.recordLong(value, context);
+    if (boundHandle != null && boundAttributes != null) {
+      if (!storage.isEnabled()) {
+        return;
+      }
+      boundHandle.recordLong(value, boundAttributes, context);
     } else {
-      storage.recordLong(value, Attributes.empty(), context);
+      super.set(value, Attributes.empty(), context);
     }
   }
 

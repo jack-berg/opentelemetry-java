@@ -13,6 +13,7 @@ import io.opentelemetry.sdk.common.internal.ThrottlingLogger;
 import io.opentelemetry.sdk.metrics.internal.aggregator.ExplicitBucketHistogramUtils;
 import io.opentelemetry.sdk.metrics.internal.descriptor.Advice;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
+import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
 import java.util.List;
 import java.util.Objects;
@@ -26,12 +27,18 @@ class SdkLongHistogram extends AbstractInstrument implements LongHistogram {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  // True iff the meter provider's exemplar filter is AlwaysOff. Skips Context.current() lookup on
+  // record overloads that would otherwise resolve the current context for exemplar sampling.
+  // Shared by unbound (this class) and bound ({@link ExtendedSdkLongHistogram}) record paths.
+  final boolean exemplarsAlwaysOff;
 
   SdkLongHistogram(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff =
+        sdkMeter.getMeterProviderSharedState().getExemplarFilter() instanceof AlwaysOffExemplarFilter;
   }
 
   @Override
@@ -44,17 +51,34 @@ class SdkLongHistogram extends AbstractInstrument implements LongHistogram {
     if (!validateNonNegative(value)) {
       return;
     }
+    if (!storage.isEnabled()) {
+      return;
+    }
     storage.recordLong(value, attributes, context);
   }
 
   @Override
   public void record(long value, Attributes attributes) {
-    record(value, attributes, Context.current());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(value, attributes, context);
   }
 
   @Override
   public void record(long value) {
-    record(value, Attributes.empty());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    if (!storage.isEnabled()) {
+      return;
+    }
+    Context context = exemplarsAlwaysOff ? Context.root() : Context.current();
+    storage.recordLong(value, Attributes.empty(), context);
   }
 
   /**

@@ -88,6 +88,11 @@ final class SdkMeter implements Meter {
 
   private final MeterProviderSharedState meterProviderSharedState;
   private final InstrumentationScopeInfo instrumentationScopeInfo;
+
+  MeterProviderSharedState getMeterProviderSharedState() {
+    return meterProviderSharedState;
+  }
+
   private final Map<RegisteredReader, MetricStorageRegistry> readerStorageRegistries;
 
   private volatile boolean meterEnabled;
@@ -362,15 +367,21 @@ final class SdkMeter implements Meter {
 
     @Override
     public void recordLong(long value, Attributes attributes, Context context) {
+      // Per-storage isEnabled check preserves the semantics of DefaultSynchronousMetricStorage's
+      // former internal check now that recordLong assumes the caller has gated on isEnabled.
       for (WriteableMetricStorage storage : storages) {
-        storage.recordLong(value, attributes, context);
+        if (storage.isEnabled()) {
+          storage.recordLong(value, attributes, context);
+        }
       }
     }
 
     @Override
     public void recordDouble(double value, Attributes attributes, Context context) {
       for (WriteableMetricStorage storage : storages) {
-        storage.recordDouble(value, attributes, context);
+        if (storage.shouldRecordDouble(value, attributes)) {
+          storage.recordDouble(value, attributes, context);
+        }
       }
     }
 
@@ -392,6 +403,16 @@ final class SdkMeter implements Meter {
       }
       return false;
     }
+
+    @Override
+    public boolean shouldRecordDouble(double value, Attributes attributes) {
+      for (WriteableMetricStorage storage : storages) {
+        if (storage.shouldRecordDouble(value, attributes)) {
+          return true;
+        }
+      }
+      return false;
+    }
   }
 
   private static class MultiBoundStorageHandle implements BoundStorageHandle {
@@ -402,16 +423,16 @@ final class SdkMeter implements Meter {
     }
 
     @Override
-    public void recordLong(long value, Context context) {
+    public void recordLong(long value, Attributes attributes, Context context) {
       for (BoundStorageHandle handle : handles) {
-        handle.recordLong(value, context);
+        handle.recordLong(value, attributes, context);
       }
     }
 
     @Override
-    public void recordDouble(double value, Context context) {
+    public void recordDouble(double value, Attributes attributes, Context context) {
       for (BoundStorageHandle handle : handles) {
-        handle.recordDouble(value, context);
+        handle.recordDouble(value, attributes, context);
       }
     }
   }
