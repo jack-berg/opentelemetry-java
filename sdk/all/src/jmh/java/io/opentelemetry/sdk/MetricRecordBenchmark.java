@@ -31,7 +31,6 @@ import io.opentelemetry.api.incubator.metrics.ExtendedLongUpDownCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.metrics.Aggregation;
 import io.opentelemetry.sdk.metrics.Base2ExponentialHistogramOptions;
@@ -182,6 +181,12 @@ public class MetricRecordBenchmark {
     @Setup
     @SuppressWarnings("MustBeClosedChecker")
     public void setup() {
+      // Prometheus is always cumulative; the DELTA row duplicates the CUMULATIVE row. Skip via
+      // JMH's setup-exception mechanism so invalid combos don't appear in results.
+      if (prometheus && aggregationTemporality == AggregationTemporality.DELTA) {
+        throw new SkipInvalidCombo(
+            "Prometheus is cumulative-only; skipping duplicate DELTA combo");
+      }
       InstrumentType instrumentType = instrumentTypeAndAggregation.instrumentType;
       Aggregation aggregation = instrumentTypeAndAggregation.aggregation;
 
@@ -319,7 +324,7 @@ public class MetricRecordBenchmark {
       List<BoundInstrument> boundInstruments = benchmarkState.boundInstruments;
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
         long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
-        boundInstruments.get(order[i % order.length]).record(value, Context.root());
+        boundInstruments.get(order[i % order.length]).record(value);
       }
     } else if (benchmarkState.prometheus) {
       PrometheusInstrument prometheusInstrument = benchmarkState.prometheusInstrument;
@@ -332,7 +337,7 @@ public class MetricRecordBenchmark {
       for (int i = 0; i < RECORDS_PER_INVOCATION; i++) {
         Attributes attributes = benchmarkState.attributesList.get(order[i % order.length]);
         long value = benchmarkState.measurements.get(i % benchmarkState.measurements.size());
-        benchmarkState.instrument.record(value, attributes, Context.root());
+        benchmarkState.instrument.record(value, attributes);
       }
     }
   }
@@ -361,7 +366,7 @@ public class MetricRecordBenchmark {
   }
 
   private interface Instrument {
-    void record(long value, Attributes attributes, Context context);
+    void record(long value, Attributes attributes);
   }
 
   private interface PrometheusInstrument {
@@ -397,7 +402,7 @@ public class MetricRecordBenchmark {
 
   @FunctionalInterface
   private interface BoundInstrument {
-    void record(long value, Context context);
+    void record(long value);
   }
 
   /**
@@ -456,7 +461,7 @@ public class MetricRecordBenchmark {
           Counter counter = Counter.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             CounterDataPoint dp = counter.labelValues(label);
-            result.add((value, context) -> dp.inc(value));
+            result.add(dp::inc);
           }
           return result;
         }
@@ -465,7 +470,7 @@ public class MetricRecordBenchmark {
           Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             GaugeDataPoint dp = gauge.labelValues(label);
-            result.add((value, context) -> dp.inc(value));
+            result.add(dp::inc);
           }
           return result;
         }
@@ -474,7 +479,7 @@ public class MetricRecordBenchmark {
           Gauge gauge = Gauge.builder().name(name).help(name).labelNames("key").build();
           for (String label : labelValues) {
             GaugeDataPoint dp = gauge.labelValues(label);
-            result.add((value, context) -> dp.set(value));
+            result.add(dp::set);
           }
           return result;
         }
@@ -484,7 +489,7 @@ public class MetricRecordBenchmark {
               Histogram.builder().name(name).help(name).labelNames("key").classicOnly().build();
           for (String label : labelValues) {
             DistributionDataPoint dp = histogram.labelValues(label);
-            result.add((value, context) -> dp.observe(value));
+            result.add(dp::observe);
           }
           return result;
         }
@@ -579,5 +584,19 @@ public class MetricRecordBenchmark {
       case OBSERVABLE_GAUGE:
     }
     throw new IllegalArgumentException();
+  }
+
+  /**
+   * Thrown from {@link BenchmarkState#setup} to skip param combinations that are invalid or
+   * duplicate for a given backend (e.g. Prometheus with {@code aggregationTemporality=DELTA}).
+   * JMH treats a setup exception as a failed trial and omits it from aggregated results, which
+   * is the desired effect here.
+   */
+  static final class SkipInvalidCombo extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    SkipInvalidCombo(String message) {
+      super(message);
+    }
   }
 }
