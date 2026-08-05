@@ -47,7 +47,7 @@ final class ExtendedSdkDoubleGauge extends SdkDoubleGauge
 
   @Override
   public void set(double value) {
-    set(value, exemplarsAlwaysOff ? Context.root() : Context.current());
+    set(value, currentOrRootContext());
   }
 
   @Override

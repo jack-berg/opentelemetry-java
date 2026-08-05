@@ -48,7 +48,7 @@ final class ExtendedSdkLongHistogram extends SdkLongHistogram
 
   @Override
   public void record(long value) {
-    record(value, exemplarsAlwaysOff ? Context.root() : Context.current());
+    record(value, currentOrRootContext());
   }
 
   @Override

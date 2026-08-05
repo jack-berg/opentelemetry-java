@@ -20,15 +20,12 @@ class SdkDoubleGauge extends AbstractInstrument implements DoubleGauge {
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkDoubleGauge(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -38,7 +35,7 @@ class SdkDoubleGauge extends AbstractInstrument implements DoubleGauge {
 
   @Override
   public void set(double value, Attributes attributes) {
-    storage.recordDouble(value, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    storage.recordDouble(value, attributes, currentOrRootContext());
   }
 
   @Override

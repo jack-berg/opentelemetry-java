@@ -20,14 +20,11 @@ class SdkLongGauge extends AbstractInstrument implements LongGauge {
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkLongGauge(InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -37,7 +34,7 @@ class SdkLongGauge extends AbstractInstrument implements LongGauge {
 
   @Override
   public void set(long value, Attributes attributes) {
-    storage.recordLong(value, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    storage.recordLong(value, attributes, currentOrRootContext());
   }
 
   @Override

@@ -20,15 +20,12 @@ class SdkDoubleUpDownCounter extends AbstractInstrument implements DoubleUpDownC
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkDoubleUpDownCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -43,7 +40,7 @@ class SdkDoubleUpDownCounter extends AbstractInstrument implements DoubleUpDownC
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    add(increment, attributes, currentOrRootContext());
   }
 
   @Override

@@ -26,15 +26,12 @@ class SdkLongHistogram extends AbstractInstrument implements LongHistogram {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkLongHistogram(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -52,7 +49,7 @@ class SdkLongHistogram extends AbstractInstrument implements LongHistogram {
 
   @Override
   public void record(long value, Attributes attributes) {
-    record(value, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    record(value, attributes, currentOrRootContext());
   }
 
   @Override
