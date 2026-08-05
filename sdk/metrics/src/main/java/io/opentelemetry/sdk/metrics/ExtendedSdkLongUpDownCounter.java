@@ -48,7 +48,7 @@ final class ExtendedSdkLongUpDownCounter extends SdkLongUpDownCounter
 
   @Override
   public void add(long value) {
-    add(value, Context.current());
+    add(value, exemplarsAlwaysOff ? Context.root() : Context.current());
   }
 
   @Override
