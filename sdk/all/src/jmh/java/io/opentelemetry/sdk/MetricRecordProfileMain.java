@@ -17,9 +17,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * MetricRecordBenchmark.ThreadState} setup, then drives {@link MetricRecordBenchmark#record} in a
  * hot loop from configured worker threads.
  *
- * <p>Intended for IDE profiler attach (IntelliJ's built-in profiler, async-profiler, etc.). Edit
- * the constants at the top to switch scenarios. Ops/s is printed periodically as a sanity check
- * that throughput matches the JMH result for the same params.
+ * <p>Intended for IDE profiler attach (IntelliJ's built-in profiler, async-profiler, etc.) or
+ * running with {@code -XX:+PrintInlining} to inspect JIT decisions on the record path. Edit the
+ * constants at the top to switch scenarios. Ops/s is printed periodically as a sanity check that
+ * throughput matches the JMH result for the same params.
  */
 @SuppressWarnings("SystemOut")
 public final class MetricRecordProfileMain {
@@ -46,7 +47,7 @@ public final class MetricRecordProfileMain {
   private static final int WARMUP_SECONDS = 10;
 
   /** Seconds of measurement. Set to 0 for indefinite (Ctrl+C to stop). */
-  private static final int MEASUREMENT_SECONDS = 20;
+  private static final int MEASUREMENT_SECONDS = 60;
 
   /** How often to print a rolling ops/s update during measurement. */
   private static final int REPORT_EVERY_SECONDS = 5;
