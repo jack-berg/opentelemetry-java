@@ -26,12 +26,18 @@ class SdkLongCounter extends AbstractInstrument implements LongCounter {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
+  // True iff the meter provider's exemplar filter samples nothing. Lets record overloads skip the
+  // {@link Context#current()} lookup (used only to derive exemplar span context) and use {@link
+  // Context#root()} instead. Shared by the unbound and bound ({@link ExtendedSdkLongCounter})
+  // record paths.
+  final boolean exemplarsAlwaysOff;
 
   SdkLongCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
     super(descriptor);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
+    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -49,7 +55,7 @@ class SdkLongCounter extends AbstractInstrument implements LongCounter {
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, Context.current());
+    add(increment, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
   }
 
   @Override

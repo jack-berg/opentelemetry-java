@@ -46,7 +46,7 @@ final class ExtendedSdkLongGauge extends SdkLongGauge implements ExtendedLongGau
 
   @Override
   public void set(long value) {
-    set(value, Context.current());
+    set(value, exemplarsAlwaysOff ? Context.root() : Context.current());
   }
 
   @Override
