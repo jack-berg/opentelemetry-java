@@ -28,4 +28,6 @@ dependencies {
 
   jmh(project(":sdk:testing"))
   jmh(project(":api:incubator"))
+
+  jmh("io.prometheus:prometheus-metrics-core:1.8.0")
 }
