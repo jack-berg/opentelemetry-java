@@ -22,8 +22,8 @@ import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.internal.MeterConfig;
 import io.opentelemetry.sdk.metrics.internal.descriptor.InstrumentDescriptor;
-import io.opentelemetry.sdk.metrics.internal.export.RegisteredReader;
 import io.opentelemetry.sdk.metrics.internal.exemplar.AlwaysOffExemplarFilter;
+import io.opentelemetry.sdk.metrics.internal.export.RegisteredReader;
 import io.opentelemetry.sdk.metrics.internal.state.AsynchronousMetricStorage;
 import io.opentelemetry.sdk.metrics.internal.state.BoundStorageHandle;
 import io.opentelemetry.sdk.metrics.internal.state.CallbackRegistration;
@@ -92,8 +92,8 @@ final class SdkMeter implements Meter {
 
   /**
    * Returns true if the meter provider's exemplar filter samples nothing. Callers can use this to
-   * skip {@link io.opentelemetry.context.Context#current()} lookups on record paths that only
-   * need the current context to derive an exemplar span context.
+   * skip {@link io.opentelemetry.context.Context#current()} lookups on record paths that only need
+   * the current context to derive an exemplar span context.
    */
   boolean isExemplarsAlwaysOff() {
     return meterProviderSharedState.getExemplarFilter() instanceof AlwaysOffExemplarFilter;

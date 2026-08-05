@@ -20,15 +20,12 @@ class SdkLongUpDownCounter extends AbstractInstrument implements LongUpDownCount
 
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkLongUpDownCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -43,7 +40,7 @@ class SdkLongUpDownCounter extends AbstractInstrument implements LongUpDownCount
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    add(increment, attributes, currentOrRootContext());
   }
 
   @Override

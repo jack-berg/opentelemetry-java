@@ -47,7 +47,7 @@ final class ExtendedSdkLongCounter extends SdkLongCounter
 
   @Override
   public void add(long value) {
-    add(value, exemplarsAlwaysOff ? Context.root() : Context.current());
+    add(value, currentOrRootContext());
   }
 
   @Override

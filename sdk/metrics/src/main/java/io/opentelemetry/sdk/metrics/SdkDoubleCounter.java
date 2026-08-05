@@ -25,15 +25,12 @@ class SdkDoubleCounter extends AbstractInstrument implements DoubleCounter {
   private final ThrottlingLogger throttlingLogger = new ThrottlingLogger(logger);
   final SdkMeter sdkMeter;
   final WriteableMetricStorage storage;
-  // See {@link SdkLongCounter#exemplarsAlwaysOff}.
-  final boolean exemplarsAlwaysOff;
 
   SdkDoubleCounter(
       InstrumentDescriptor descriptor, SdkMeter sdkMeter, WriteableMetricStorage storage) {
-    super(descriptor);
+    super(descriptor, sdkMeter);
     this.sdkMeter = sdkMeter;
     this.storage = storage;
-    this.exemplarsAlwaysOff = sdkMeter.isExemplarsAlwaysOff();
   }
 
   @Override
@@ -51,7 +48,7 @@ class SdkDoubleCounter extends AbstractInstrument implements DoubleCounter {
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, exemplarsAlwaysOff ? Context.root() : Context.current());
+    add(increment, attributes, currentOrRootContext());
   }
 
   @Override
