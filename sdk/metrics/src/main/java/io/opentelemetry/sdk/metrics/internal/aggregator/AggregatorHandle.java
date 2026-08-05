@@ -103,7 +103,15 @@ public abstract class AggregatorHandle<T extends PointData> {
     throw new UnsupportedOperationException(UNSUPPORTED_LONG_MESSAGE);
   }
 
-  public void recordLong(long value, Attributes attributes, Context context) {
+  public final void recordLong(long value, Attributes attributes, Context context) {
+    // Long measurements against a double-typed aggregator (e.g. LongHistogram, whose only
+    // aggregators are double-backed) route through recordDouble here so concrete Handles don't
+    // need to override recordLong just to bounce back to recordDouble. Keeps this method
+    // monomorphic (final) so JIT can inline it at call sites.
+    if (isDoubleType) {
+      recordDouble((double) value, attributes, context);
+      return;
+    }
     throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
         .offerLongMeasurement(value, attributes, context);
     doRecordLong(value);

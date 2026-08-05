@@ -7,7 +7,6 @@ package io.opentelemetry.sdk.metrics.internal.aggregator;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.internal.GuardedBy;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
 import io.opentelemetry.sdk.common.export.MemoryMode;
 import io.opentelemetry.sdk.common.internal.PrimitiveLongList;
@@ -141,14 +140,6 @@ public final class DoubleExplicitBucketHistogramAggregator
       } else {
         this.reusablePoint = null;
       }
-    }
-
-    @Override
-    public void recordLong(long value, Attributes attributes, Context context) {
-      // Since there is no LongExplicitBucketHistogramAggregator and we need to support measurements
-      // from LongHistogram, we redirect calls from #recordLong to #recordDouble. Without this, the
-      // base AggregatorHandle implementation of #recordLong throws.
-      super.recordDouble((double) value, attributes, context);
     }
 
     @Override
