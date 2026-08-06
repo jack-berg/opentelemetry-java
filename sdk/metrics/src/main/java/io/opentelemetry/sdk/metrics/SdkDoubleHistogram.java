@@ -48,12 +48,20 @@ class SdkDoubleHistogram extends AbstractInstrument implements DoubleHistogram {
 
   @Override
   public void record(double value, Attributes attributes) {
-    record(value, attributes, currentOrRootContext());
+    // Inlined body (no delegation to record(double, Attributes, Context)). See
+    // SdkLongHistogram.record(long, Attributes) for rationale.
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    storage.recordDouble(value, attributes, currentOrRootContext());
   }
 
   @Override
   public void record(double value) {
-    record(value, Attributes.empty());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    storage.recordDouble(value, Attributes.empty(), currentOrRootContext());
   }
 
   /**

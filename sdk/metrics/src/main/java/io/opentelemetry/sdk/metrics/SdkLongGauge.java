@@ -44,7 +44,8 @@ class SdkLongGauge extends AbstractInstrument implements LongGauge {
 
   @Override
   public void set(long value) {
-    set(value, Attributes.empty());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    storage.recordLong(value, Attributes.empty(), currentOrRootContext());
   }
 
   static class SdkLongGaugeBuilder implements LongGaugeBuilder {

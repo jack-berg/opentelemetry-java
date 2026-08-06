@@ -49,12 +49,19 @@ class SdkLongCounter extends AbstractInstrument implements LongCounter {
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, currentOrRootContext());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    storage.recordLong(increment, attributes, currentOrRootContext());
   }
 
   @Override
   public void add(long increment) {
-    add(increment, Attributes.empty());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    storage.recordLong(increment, Attributes.empty(), currentOrRootContext());
   }
 
   /**

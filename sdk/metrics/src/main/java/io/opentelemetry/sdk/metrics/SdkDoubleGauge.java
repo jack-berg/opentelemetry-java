@@ -45,7 +45,8 @@ class SdkDoubleGauge extends AbstractInstrument implements DoubleGauge {
 
   @Override
   public void set(double value) {
-    set(value, Attributes.empty());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    storage.recordDouble(value, Attributes.empty(), currentOrRootContext());
   }
 
   static class SdkDoubleGaugeBuilder implements DoubleGaugeBuilder {

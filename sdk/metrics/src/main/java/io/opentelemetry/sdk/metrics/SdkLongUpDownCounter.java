@@ -40,12 +40,13 @@ class SdkLongUpDownCounter extends AbstractInstrument implements LongUpDownCount
 
   @Override
   public void add(long increment, Attributes attributes) {
-    add(increment, attributes, currentOrRootContext());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    storage.recordLong(increment, attributes, currentOrRootContext());
   }
 
   @Override
   public void add(long increment) {
-    add(increment, Attributes.empty());
+    storage.recordLong(increment, Attributes.empty(), currentOrRootContext());
   }
 
   static class SdkLongUpDownCounterBuilder implements LongUpDownCounterBuilder {

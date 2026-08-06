@@ -48,12 +48,19 @@ class SdkDoubleCounter extends AbstractInstrument implements DoubleCounter {
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, currentOrRootContext());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    storage.recordDouble(increment, attributes, currentOrRootContext());
   }
 
   @Override
   public void add(double increment) {
-    add(increment, Attributes.empty());
+    if (!validateNonNegative(increment)) {
+      return;
+    }
+    storage.recordDouble(increment, Attributes.empty(), currentOrRootContext());
   }
 
   /**

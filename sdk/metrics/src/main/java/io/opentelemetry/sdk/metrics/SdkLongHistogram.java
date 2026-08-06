@@ -49,12 +49,22 @@ class SdkLongHistogram extends AbstractInstrument implements LongHistogram {
 
   @Override
   public void record(long value, Attributes attributes) {
-    record(value, attributes, currentOrRootContext());
+    // Inlined body (no delegation to record(long, Attributes, Context)) so this overload's
+    // callers can inline it directly. Reduces the chance that HotSpot separately compiles the
+    // 3-arg overload from multiple call sites, which would introduce a method-call boundary on
+    // the record path.
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    storage.recordLong(value, attributes, currentOrRootContext());
   }
 
   @Override
   public void record(long value) {
-    record(value, Attributes.empty());
+    if (!validateNonNegative(value)) {
+      return;
+    }
+    storage.recordLong(value, Attributes.empty(), currentOrRootContext());
   }
 
   /**

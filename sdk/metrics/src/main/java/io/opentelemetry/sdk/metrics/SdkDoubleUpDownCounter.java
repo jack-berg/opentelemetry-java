@@ -40,12 +40,13 @@ class SdkDoubleUpDownCounter extends AbstractInstrument implements DoubleUpDownC
 
   @Override
   public void add(double increment, Attributes attributes) {
-    add(increment, attributes, currentOrRootContext());
+    // Inlined body. See SdkLongHistogram.record(long, Attributes) for rationale.
+    storage.recordDouble(increment, attributes, currentOrRootContext());
   }
 
   @Override
   public void add(double increment) {
-    add(increment, Attributes.empty());
+    storage.recordDouble(increment, Attributes.empty(), currentOrRootContext());
   }
 
   static class SdkDoubleUpDownCounterBuilder implements DoubleUpDownCounterBuilder {
