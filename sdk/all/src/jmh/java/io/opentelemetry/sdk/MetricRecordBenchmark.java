@@ -184,8 +184,7 @@ public class MetricRecordBenchmark {
       // Prometheus is always cumulative; the DELTA row duplicates the CUMULATIVE row. Skip via
       // JMH's setup-exception mechanism so invalid combos don't appear in results.
       if (prometheus && aggregationTemporality == AggregationTemporality.DELTA) {
-        throw new SkipInvalidCombo(
-            "Prometheus is cumulative-only; skipping duplicate DELTA combo");
+        throw new SkipInvalidCombo("Prometheus is cumulative-only; skipping duplicate DELTA combo");
       }
       InstrumentType instrumentType = instrumentTypeAndAggregation.instrumentType;
       Aggregation aggregation = instrumentTypeAndAggregation.aggregation;
@@ -588,9 +587,9 @@ public class MetricRecordBenchmark {
 
   /**
    * Thrown from {@link BenchmarkState#setup} to skip param combinations that are invalid or
-   * duplicate for a given backend (e.g. Prometheus with {@code aggregationTemporality=DELTA}).
-   * JMH treats a setup exception as a failed trial and omits it from aggregated results, which
-   * is the desired effect here.
+   * duplicate for a given backend (e.g. Prometheus with {@code aggregationTemporality=DELTA}). JMH
+   * treats a setup exception as a failed trial and omits it from aggregated results, which is the
+   * desired effect here.
    */
   static final class SkipInvalidCombo extends RuntimeException {
     private static final long serialVersionUID = 1L;

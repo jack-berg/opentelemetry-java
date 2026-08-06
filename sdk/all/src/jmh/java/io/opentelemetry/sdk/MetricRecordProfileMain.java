@@ -31,7 +31,7 @@ public final class MetricRecordProfileMain {
       MetricRecordBenchmark.InstrumentTypeAndAggregation.HISTOGRAM_EXPLICIT;
   private static final AggregationTemporality TEMPORALITY = AggregationTemporality.CUMULATIVE;
   private static final int CARDINALITY = 1;
-  private static final boolean BOUND = true;
+  private static final boolean BOUND = false;
   private static final boolean PROMETHEUS = false;
   private static final int THREADS = 1;
 
