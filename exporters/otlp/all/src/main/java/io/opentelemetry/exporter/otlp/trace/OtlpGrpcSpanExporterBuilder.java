@@ -12,6 +12,7 @@ import io.grpc.ManagedChannel;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.common.ComponentLoader;
+import io.opentelemetry.exporter.internal.TlsUtil;
 import io.opentelemetry.exporter.otlp.internal.GrpcExporterBuilder;
 import io.opentelemetry.exporter.otlp.internal.OtlpUserAgent;
 import io.opentelemetry.sdk.common.InternalTelemetryVersion;
@@ -314,6 +315,25 @@ public final class OtlpGrpcSpanExporterBuilder {
     requireNonNull(enabledProtocols, "enabledProtocols");
     checkArgument(!enabledProtocols.isEmpty(), "enabledProtocols must not be empty");
     delegate.setEnabledProtocols(enabledProtocols);
+    return this;
+  }
+
+  /**
+   * Sets the TLS named groups (a.k.a. TLS supported groups) to enable for key exchange when
+   * connecting to an HTTPS endpoint. By default, OTLP exporters use the sender implementation's
+   * default named groups. Omit this call to use that default.
+   *
+   * <p>Names follow the JSSE convention and the IANA "TLS Supported Groups" registry, e.g. {@code
+   * "x25519"}, {@code "secp256r1"}, {@code "X25519MLKEM768"}.
+   *
+   * <p>Requires JDK 20+ (backed by {@code javax.net.ssl.SSLParameters#setNamedGroups(String[])}).
+   * Throws {@link UnsupportedOperationException} on older JVMs.
+   */
+  public OtlpGrpcSpanExporterBuilder setEnabledTlsNamedGroups(List<String> enabledTlsNamedGroups) {
+    requireNonNull(enabledTlsNamedGroups, "enabledTlsNamedGroups");
+    checkArgument(!enabledTlsNamedGroups.isEmpty(), "enabledTlsNamedGroups must not be empty");
+    TlsUtil.requireNamedGroupsSupported();
+    delegate.setEnabledTlsNamedGroups(enabledTlsNamedGroups);
     return this;
   }
 

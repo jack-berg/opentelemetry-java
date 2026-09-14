@@ -141,6 +141,13 @@ public class HttpSpanExporterBuilderWrapper implements TelemetryExporterBuilder<
   }
 
   @Override
+  public TelemetryExporterBuilder<SpanData> setEnabledTlsNamedGroups(
+      List<String> enabledTlsNamedGroups) {
+    builder.setEnabledTlsNamedGroups(enabledTlsNamedGroups);
+    return this;
+  }
+
+  @Override
   public TelemetryExporterBuilder<SpanData> setMeterProvider(
       Supplier<MeterProvider> meterProviderSupplier) {
     builder.setMeterProvider(meterProviderSupplier);

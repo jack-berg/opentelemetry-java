@@ -10,6 +10,10 @@ import static java.util.stream.Collectors.joining;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.KeyStore;
@@ -25,9 +29,14 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import javax.annotation.Nullable;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509KeyManager;
@@ -45,6 +54,19 @@ public final class TlsUtil {
   private static final String PEM_KEY_FOOTER = "-----END PRIVATE KEY-----";
   private static final List<KeyFactory> SUPPORTED_KEY_FACTORIES;
 
+  // SSLParameters#setNamedGroups(String[]) was added in JDK 20. Null on older JDKs.
+  @Nullable private static final Method SET_NAMED_GROUPS_METHOD;
+
+  static {
+    Method m = null;
+    try {
+      m = SSLParameters.class.getMethod("setNamedGroups", String[].class);
+    } catch (NoSuchMethodException e) {
+      // JDK < 20
+    }
+    SET_NAMED_GROUPS_METHOD = m;
+  }
+
   static {
     SUPPORTED_KEY_FACTORIES = new ArrayList<>();
     try {
@@ -60,6 +82,136 @@ public final class TlsUtil {
   }
 
   private TlsUtil() {}
+
+  /**
+   * Returns true if the current JVM supports configuring TLS named groups via {@code
+   * SSLParameters#setNamedGroups(String[])} (JDK 20+).
+   */
+  public static boolean namedGroupsSupported() {
+    return SET_NAMED_GROUPS_METHOD != null;
+  }
+
+  /**
+   * Throws {@link UnsupportedOperationException} if the current JVM does not support configuring
+   * TLS named groups (i.e. JDK &lt; 20).
+   */
+  public static void requireNamedGroupsSupported() {
+    if (SET_NAMED_GROUPS_METHOD == null) {
+      throw new UnsupportedOperationException(
+          "Setting TLS named groups requires JDK 20+ (SSLParameters#setNamedGroups is unavailable on this JVM).");
+    }
+  }
+
+  /**
+   * Invokes {@code SSLParameters#setNamedGroups(String[])} reflectively. Requires JDK 20+; callers
+   * must have already verified this via {@link #requireNamedGroupsSupported()}.
+   */
+  public static void applyNamedGroups(SSLParameters params, List<String> namedGroups) {
+    requireNamedGroupsSupported();
+    Method setNamedGroups = SET_NAMED_GROUPS_METHOD;
+    if (setNamedGroups == null) {
+      // Unreachable: requireNamedGroupsSupported() above throws when null.
+      throw new UnsupportedOperationException();
+    }
+    try {
+      setNamedGroups.invoke(params, (Object) namedGroups.toArray(new String[0]));
+    } catch (IllegalAccessException | InvocationTargetException e) {
+      throw new IllegalStateException("Failed to invoke SSLParameters#setNamedGroups", e);
+    }
+  }
+
+  /**
+   * Returns an {@link SSLSocketFactory} that wraps {@code delegate} and configures the given TLS
+   * named groups on every {@link SSLSocket} it produces. Requires JDK 20+.
+   */
+  public static SSLSocketFactory namedGroupsSslSocketFactory(
+      SSLSocketFactory delegate, List<String> namedGroups) {
+    requireNamedGroupsSupported();
+    return new NamedGroupsSslSocketFactory(delegate, namedGroups.toArray(new String[0]));
+  }
+
+  /**
+   * Returns the platform default {@link SSLSocketFactory} by way of {@link
+   * SSLContext#getDefault()}.
+   */
+  public static SSLSocketFactory defaultSslSocketFactory() throws SSLException {
+    try {
+      return SSLContext.getDefault().getSocketFactory();
+    } catch (NoSuchAlgorithmException e) {
+      throw new SSLException("Could not obtain default SSLContext", e);
+    }
+  }
+
+  private static final class NamedGroupsSslSocketFactory extends SSLSocketFactory {
+    private final SSLSocketFactory delegate;
+    private final String[] namedGroups;
+
+    NamedGroupsSslSocketFactory(SSLSocketFactory delegate, String[] namedGroups) {
+      this.delegate = delegate;
+      this.namedGroups = namedGroups;
+    }
+
+    private Socket configure(Socket socket) {
+      if (socket instanceof SSLSocket) {
+        SSLSocket sslSocket = (SSLSocket) socket;
+        SSLParameters params = sslSocket.getSSLParameters();
+        Method setNamedGroups = SET_NAMED_GROUPS_METHOD;
+        if (setNamedGroups == null) {
+          throw new UnsupportedOperationException();
+        }
+        try {
+          setNamedGroups.invoke(params, (Object) namedGroups);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+          throw new IllegalStateException("Failed to invoke SSLParameters#setNamedGroups", e);
+        }
+        sslSocket.setSSLParameters(params);
+      }
+      return socket;
+    }
+
+    @Override
+    public String[] getDefaultCipherSuites() {
+      return delegate.getDefaultCipherSuites();
+    }
+
+    @Override
+    public String[] getSupportedCipherSuites() {
+      return delegate.getSupportedCipherSuites();
+    }
+
+    @Override
+    public Socket createSocket() throws IOException {
+      return configure(delegate.createSocket());
+    }
+
+    @Override
+    public Socket createSocket(Socket s, String host, int port, boolean autoClose)
+        throws IOException {
+      return configure(delegate.createSocket(s, host, port, autoClose));
+    }
+
+    @Override
+    public Socket createSocket(String host, int port) throws IOException {
+      return configure(delegate.createSocket(host, port));
+    }
+
+    @Override
+    public Socket createSocket(String host, int port, InetAddress localHost, int localPort)
+        throws IOException {
+      return configure(delegate.createSocket(host, port, localHost, localPort));
+    }
+
+    @Override
+    public Socket createSocket(InetAddress host, int port) throws IOException {
+      return configure(delegate.createSocket(host, port));
+    }
+
+    @Override
+    public Socket createSocket(
+        InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+      return configure(delegate.createSocket(address, port, localAddress, localPort));
+    }
+  }
 
   /**
    * Creates {@link KeyManager} initiated by keystore containing single private key with matching

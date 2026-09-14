@@ -10,6 +10,7 @@ import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.asser
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.satisfies;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.Named.named;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
@@ -449,6 +450,23 @@ public abstract class AbstractHttpTelemetryExporterTest<T, U extends Message> {
       CompletableResultCode result =
           exporter.export(Collections.singletonList(generateFakeTelemetry()));
       assertThat(result.join(10, TimeUnit.SECONDS).isSuccess()).isFalse();
+    }
+  }
+
+  @Test
+  void enabledTlsNamedGroups() throws Exception {
+    assumeThat(TlsUtil.namedGroupsSupported())
+        .as("SSLParameters#setNamedGroups requires JDK 20+")
+        .isTrue();
+    try (TelemetryExporter<T> exporter =
+        exporterBuilder()
+            .setEndpoint(server.httpsUri() + path)
+            .setTrustedCertificates(Files.readAllBytes(certificate.certificateFile().toPath()))
+            .setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1"))
+            .build()) {
+      CompletableResultCode result =
+          exporter.export(Collections.singletonList(generateFakeTelemetry()));
+      assertThat(result.join(10, TimeUnit.SECONDS).isSuccess()).isTrue();
     }
   }
 
@@ -949,6 +967,18 @@ public abstract class AbstractHttpTelemetryExporterTest<T, U extends Message> {
 
     assertThatCode(() -> exporterBuilder().setEnabledProtocols(Arrays.asList("TLSv1.2", "TLSv1.3")))
         .doesNotThrowAnyException();
+
+    if (TlsUtil.namedGroupsSupported()) {
+      assertThatCode(
+              () ->
+                  exporterBuilder().setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1")))
+          .doesNotThrowAnyException();
+    } else {
+      assertThatThrownBy(
+              () ->
+                  exporterBuilder().setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1")))
+          .isInstanceOf(UnsupportedOperationException.class);
+    }
   }
 
   private void buildAndShutdown(TelemetryExporterBuilder<T> builder) {
@@ -1015,6 +1045,13 @@ public abstract class AbstractHttpTelemetryExporterTest<T, U extends Message> {
     assertThatThrownBy(() -> exporterBuilder().setEnabledProtocols(Collections.emptyList()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("enabledProtocols must not be empty");
+
+    assertThatThrownBy(() -> exporterBuilder().setEnabledTlsNamedGroups(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("enabledTlsNamedGroups");
+    assertThatThrownBy(() -> exporterBuilder().setEnabledTlsNamedGroups(Collections.emptyList()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("enabledTlsNamedGroups must not be empty");
   }
 
   @Test

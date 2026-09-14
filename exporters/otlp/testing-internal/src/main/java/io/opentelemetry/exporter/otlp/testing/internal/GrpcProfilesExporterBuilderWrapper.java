@@ -143,6 +143,13 @@ final class GrpcProfilesExporterBuilderWrapper implements TelemetryExporterBuild
   }
 
   @Override
+  public TelemetryExporterBuilder<ProfileData> setEnabledTlsNamedGroups(
+      List<String> enabledTlsNamedGroups) {
+    builder.setEnabledTlsNamedGroups(enabledTlsNamedGroups);
+    return this;
+  }
+
+  @Override
   public TelemetryExporterBuilder<ProfileData> setMeterProvider(
       Supplier<MeterProvider> meterProviderSupplier) {
     // Not yet supported

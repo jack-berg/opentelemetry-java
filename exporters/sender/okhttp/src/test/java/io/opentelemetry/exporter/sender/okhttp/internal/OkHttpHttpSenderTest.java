@@ -67,6 +67,7 @@ class OkHttpHttpSenderTest {
             null,
             executor,
             Long.MAX_VALUE,
+            null,
             null);
 
     AtomicReference<HttpResponse> responseRef = new AtomicReference<>();
@@ -290,7 +291,8 @@ class OkHttpHttpSenderTest {
               trustManager,
               null,
               Long.MAX_VALUE,
-              Collections.singletonList("TLSv1.1"));
+              Collections.singletonList("TLSv1.1"),
+              null);
 
       AtomicReference<HttpResponse> responseRef = new AtomicReference<>();
       AtomicReference<Throwable> errorRef = new AtomicReference<>();
@@ -328,6 +330,7 @@ class OkHttpHttpSenderTest {
         null,
         executorService,
         Long.MAX_VALUE,
+        null,
         null);
   }
 
@@ -361,6 +364,7 @@ class OkHttpHttpSenderTest {
                     null,
                     null,
                     Long.MAX_VALUE,
+                    null,
                     null))
         .doesNotThrowAnyException();
   }
@@ -390,6 +394,7 @@ class OkHttpHttpSenderTest {
                       null,
                       null,
                       Long.MAX_VALUE,
+                      null,
                       null))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("Unable to initialize default trust manager")

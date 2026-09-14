@@ -7,6 +7,7 @@ package io.opentelemetry.exporter.sender.jdk.internal;
 
 import io.opentelemetry.api.impl.InstrumentationUtil;
 import io.opentelemetry.exporter.internal.RetryUtil;
+import io.opentelemetry.exporter.internal.TlsUtil;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.Compressor;
 import io.opentelemetry.sdk.common.export.HttpResponse;
@@ -123,9 +124,11 @@ public final class JdkHttpSender implements HttpSender {
       @Nullable SSLContext sslContext,
       @Nullable ExecutorService executorService,
       long maxResponseBodySize,
-      @Nullable List<String> enabledProtocols) {
+      @Nullable List<String> enabledProtocols,
+      @Nullable List<String> enabledTlsNamedGroups) {
     this(
-        configureClient(sslContext, connectTimeout, proxyOptions, enabledProtocols),
+        configureClient(
+            sslContext, connectTimeout, proxyOptions, enabledProtocols, enabledTlsNamedGroups),
         endpoint,
         contentType,
         compressor,
@@ -150,7 +153,8 @@ public final class JdkHttpSender implements HttpSender {
       @Nullable SSLContext sslContext,
       Duration connectTimeout,
       @Nullable ProxyOptions proxyOptions,
-      @Nullable List<String> enabledProtocols) {
+      @Nullable List<String> enabledProtocols,
+      @Nullable List<String> enabledTlsNamedGroups) {
     HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
     if (sslContext != null) {
       builder.sslContext(sslContext);
@@ -158,9 +162,18 @@ public final class JdkHttpSender implements HttpSender {
     if (proxyOptions != null) {
       builder.proxy(proxyOptions.getProxySelector());
     }
+    SSLParameters params = null;
     if (enabledProtocols != null && !enabledProtocols.isEmpty()) {
-      SSLParameters params = new SSLParameters();
+      params = new SSLParameters();
       params.setProtocols(enabledProtocols.toArray(new String[0]));
+    }
+    if (enabledTlsNamedGroups != null && !enabledTlsNamedGroups.isEmpty()) {
+      if (params == null) {
+        params = new SSLParameters();
+      }
+      TlsUtil.applyNamedGroups(params, enabledTlsNamedGroups);
+    }
+    if (params != null) {
       builder.sslParameters(params);
     }
     return builder.build();

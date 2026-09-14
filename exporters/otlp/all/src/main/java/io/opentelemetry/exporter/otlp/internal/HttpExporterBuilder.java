@@ -70,6 +70,7 @@ public final class HttpExporterBuilder {
       ComponentLoader.forClassLoader(HttpExporterBuilder.class.getClassLoader());
   @Nullable private ExecutorService executorService;
   @Nullable private List<String> enabledProtocols;
+  @Nullable private List<String> enabledTlsNamedGroups;
 
   public HttpExporterBuilder(
       StandardComponentId.ExporterType exporterType, String defaultEndpoint) {
@@ -173,6 +174,12 @@ public final class HttpExporterBuilder {
     return this;
   }
 
+  public HttpExporterBuilder setEnabledTlsNamedGroups(
+      @Nullable List<String> enabledTlsNamedGroups) {
+    this.enabledTlsNamedGroups = enabledTlsNamedGroups;
+    return this;
+  }
+
   public HttpExporterBuilder exportAsJson() {
     this.exportAsJson = true;
     exporterType = mapToJsonTypeIfPossible(exporterType);
@@ -211,6 +218,7 @@ public final class HttpExporterBuilder {
     copy.proxyOptions = proxyOptions;
     copy.componentLoader = componentLoader;
     copy.enabledProtocols = enabledProtocols;
+    copy.enabledTlsNamedGroups = enabledTlsNamedGroups;
     return copy;
   }
 
@@ -255,7 +263,8 @@ public final class HttpExporterBuilder {
                 // 4mb to align with spec guidance - even though we don't do anything with the
                 // response today, we will so better to have future-looking memory profile
                 4 * 1024L * 1024L,
-                enabledProtocols));
+                enabledProtocols,
+                enabledTlsNamedGroups));
     LOGGER.log(Level.FINE, "Using HttpSender: " + httpSender.getClass().getName());
 
     return new HttpExporter(
@@ -292,6 +301,9 @@ public final class HttpExporterBuilder {
     }
     if (enabledProtocols != null) {
       joiner.add("enabledProtocols=" + enabledProtocols);
+    }
+    if (enabledTlsNamedGroups != null) {
+      joiner.add("enabledTlsNamedGroups=" + enabledTlsNamedGroups);
     }
     joiner.add("componentLoader=" + componentLoader);
     if (executorService != null) {

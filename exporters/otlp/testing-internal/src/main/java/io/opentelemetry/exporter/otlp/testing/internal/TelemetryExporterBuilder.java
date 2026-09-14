@@ -82,6 +82,8 @@ public interface TelemetryExporterBuilder<T> {
 
   TelemetryExporterBuilder<T> setEnabledProtocols(List<String> enabledProtocols);
 
+  TelemetryExporterBuilder<T> setEnabledTlsNamedGroups(List<String> enabledTlsNamedGroups);
+
   TelemetryExporterBuilder<T> setMeterProvider(Supplier<MeterProvider> meterProviderSupplier);
 
   TelemetryExporterBuilder<T> setInternalTelemetryVersion(InternalTelemetryVersion schemaVersion);

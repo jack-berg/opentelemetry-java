@@ -235,6 +235,7 @@ class JdkHttpSenderTest {
             null,
             null,
             Long.MAX_VALUE,
+            null,
             null);
 
     try {
@@ -268,6 +269,7 @@ class JdkHttpSenderTest {
             null,
             null,
             Long.MAX_VALUE,
+            null,
             null);
 
     assertThat(sender)

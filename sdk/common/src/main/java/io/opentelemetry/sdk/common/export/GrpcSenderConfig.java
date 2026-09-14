@@ -117,4 +117,20 @@ public interface GrpcSenderConfig {
   default List<String> getEnabledProtocols() {
     return null;
   }
+
+  /**
+   * The TLS named groups (a.k.a. TLS supported groups) to enable for key exchange when connecting
+   * to an HTTPS endpoint, or {@code null} to defer to the sender implementation's default.
+   *
+   * <p>Names follow the JSSE convention and the IANA "TLS Supported Groups" registry, e.g. {@code
+   * "x25519"}, {@code "secp256r1"}, {@code "X25519MLKEM768"}. When set, only the listed groups will
+   * be offered during the TLS handshake.
+   *
+   * <p>This value is applied via {@code javax.net.ssl.SSLParameters#setNamedGroups(String[])},
+   * which requires JDK 20+.
+   */
+  @Nullable
+  default List<String> getEnabledTlsNamedGroups() {
+    return null;
+  }
 }

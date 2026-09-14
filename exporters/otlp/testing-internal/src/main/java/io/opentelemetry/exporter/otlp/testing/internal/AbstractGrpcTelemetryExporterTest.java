@@ -670,6 +670,28 @@ public abstract class AbstractGrpcTelemetryExporterTest<T, U extends Message> {
   }
 
   @Test
+  void enabledTlsNamedGroups() throws Exception {
+    assumeThat(TlsUtil.namedGroupsSupported())
+        .as("SSLParameters#setNamedGroups requires JDK 20+")
+        .isTrue();
+    assumeThat(System.getProperty("io.opentelemetry.sdk.common.export.GrpcSenderProvider"))
+        .as("enabledTlsNamedGroups is not supported by UpstreamGrpcSenderProvider")
+        .isNotEqualTo(
+            "io.opentelemetry.exporter.sender.grpc.managedchannel.internal.UpstreamGrpcSenderProvider");
+
+    try (TelemetryExporter<T> exporter =
+        exporterBuilder()
+            .setEndpoint(server.httpsUri().toString())
+            .setTrustedCertificates(Files.readAllBytes(certificate.certificateFile().toPath()))
+            .setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1"))
+            .build()) {
+      CompletableResultCode result =
+          exporter.export(Collections.singletonList(generateFakeTelemetry()));
+      assertThat(result.join(10, TimeUnit.SECONDS).isSuccess()).isTrue();
+    }
+  }
+
+  @Test
   @SuppressLogger(GrpcExporter.class)
   void tls_untrusted() {
     try (TelemetryExporter<T> exporter =
@@ -1114,6 +1136,18 @@ public abstract class AbstractGrpcTelemetryExporterTest<T, U extends Message> {
 
     assertThatCode(() -> exporterBuilder().setEnabledProtocols(Arrays.asList("TLSv1.2", "TLSv1.3")))
         .doesNotThrowAnyException();
+
+    if (TlsUtil.namedGroupsSupported()) {
+      assertThatCode(
+              () ->
+                  exporterBuilder().setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1")))
+          .doesNotThrowAnyException();
+    } else {
+      assertThatThrownBy(
+              () ->
+                  exporterBuilder().setEnabledTlsNamedGroups(Arrays.asList("x25519", "secp256r1")))
+          .isInstanceOf(UnsupportedOperationException.class);
+    }
   }
 
   @Test
@@ -1211,6 +1245,13 @@ public abstract class AbstractGrpcTelemetryExporterTest<T, U extends Message> {
     assertThatThrownBy(() -> exporterBuilder().setEnabledProtocols(Collections.emptyList()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("enabledProtocols must not be empty");
+
+    assertThatThrownBy(() -> exporterBuilder().setEnabledTlsNamedGroups(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("enabledTlsNamedGroups");
+    assertThatThrownBy(() -> exporterBuilder().setEnabledTlsNamedGroups(Collections.emptyList()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("enabledTlsNamedGroups must not be empty");
   }
 
   @Test

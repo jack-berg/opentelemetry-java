@@ -52,6 +52,7 @@ import java.util.logging.Logger;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.X509TrustManager;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -101,7 +102,8 @@ public final class OkHttpGrpcSender implements GrpcSender {
       @Nullable X509TrustManager trustManager,
       @Nullable ExecutorService executorService,
       long maxResponseBodySize,
-      @Nullable List<String> enabledProtocols) {
+      @Nullable List<String> enabledProtocols,
+      @Nullable List<String> enabledTlsNamedGroups) {
     int callTimeoutMillis = (int) Math.min(timeout.toMillis(), Integer.MAX_VALUE);
     int connectTimeoutMillis = (int) Math.min(connectTimeout.toMillis(), Integer.MAX_VALUE);
 
@@ -131,8 +133,20 @@ public final class OkHttpGrpcSender implements GrpcSender {
       clientBuilder.protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE));
     } else {
       clientBuilder.protocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
-      if (sslContext != null) {
-        X509TrustManager effectiveTrustManager = trustManager;
+      SSLSocketFactory sslSocketFactory = sslContext != null ? sslContext.getSocketFactory() : null;
+      X509TrustManager effectiveTrustManager = trustManager;
+      if (enabledTlsNamedGroups != null && !enabledTlsNamedGroups.isEmpty()) {
+        if (sslSocketFactory == null) {
+          try {
+            sslSocketFactory = TlsUtil.defaultSslSocketFactory();
+          } catch (SSLException e) {
+            throw new IllegalStateException("Unable to initialize default SSLSocketFactory", e);
+          }
+        }
+        sslSocketFactory =
+            TlsUtil.namedGroupsSslSocketFactory(sslSocketFactory, enabledTlsNamedGroups);
+      }
+      if (sslSocketFactory != null) {
         if (effectiveTrustManager == null) {
           try {
             effectiveTrustManager = TlsUtil.defaultTrustManager();
@@ -140,7 +154,7 @@ public final class OkHttpGrpcSender implements GrpcSender {
             throw new IllegalStateException("Unable to initialize default trust manager", e);
           }
         }
-        clientBuilder.sslSocketFactory(sslContext.getSocketFactory(), effectiveTrustManager);
+        clientBuilder.sslSocketFactory(sslSocketFactory, effectiveTrustManager);
       }
       if (enabledProtocols != null && !enabledProtocols.isEmpty()) {
         TlsVersion[] versions =

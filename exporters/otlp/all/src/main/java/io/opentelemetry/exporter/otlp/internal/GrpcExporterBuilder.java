@@ -69,6 +69,7 @@ public class GrpcExporterBuilder {
       ComponentLoader.forClassLoader(GrpcExporterBuilder.class.getClassLoader());
   @Nullable private ExecutorService executorService;
   @Nullable private List<String> enabledProtocols;
+  @Nullable private List<String> enabledTlsNamedGroups;
 
   // Use Object type since gRPC may not be on the classpath.
   @Nullable private Object grpcChannel;
@@ -176,6 +177,12 @@ public class GrpcExporterBuilder {
     return this;
   }
 
+  public GrpcExporterBuilder setEnabledTlsNamedGroups(
+      @Nullable List<String> enabledTlsNamedGroups) {
+    this.enabledTlsNamedGroups = enabledTlsNamedGroups;
+    return this;
+  }
+
   @SuppressWarnings("BuilderReturnThis")
   public GrpcExporterBuilder copy() {
     GrpcExporterBuilder copy =
@@ -196,6 +203,7 @@ public class GrpcExporterBuilder {
     copy.grpcChannel = grpcChannel;
     copy.componentLoader = componentLoader;
     copy.enabledProtocols = enabledProtocols;
+    copy.enabledTlsNamedGroups = enabledTlsNamedGroups;
     return copy;
   }
 
@@ -240,7 +248,8 @@ public class GrpcExporterBuilder {
                 // 4mb to align with spec guidance - even though we don't do anything with the
                 // response today, we will so better to have future-looking memory profile
                 4 * 1024L * 1024L,
-                enabledProtocols));
+                enabledProtocols,
+                enabledTlsNamedGroups));
     LOGGER.log(Level.FINE, "Using GrpcSender: " + grpcSender.getClass().getName());
 
     return new GrpcExporter(
@@ -275,6 +284,9 @@ public class GrpcExporterBuilder {
     }
     if (enabledProtocols != null) {
       joiner.add("enabledProtocols=" + enabledProtocols);
+    }
+    if (enabledTlsNamedGroups != null) {
+      joiner.add("enabledTlsNamedGroups=" + enabledTlsNamedGroups);
     }
     if (grpcChannel != null) {
       joiner.add("grpcChannel=" + grpcChannel);

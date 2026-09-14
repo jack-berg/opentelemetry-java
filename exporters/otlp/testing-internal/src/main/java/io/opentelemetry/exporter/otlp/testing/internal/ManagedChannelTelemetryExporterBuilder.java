@@ -218,6 +218,12 @@ public final class ManagedChannelTelemetryExporterBuilder<T>
   }
 
   @Override
+  public TelemetryExporterBuilder<T> setEnabledTlsNamedGroups(List<String> enabledTlsNamedGroups) {
+    delegate.setEnabledTlsNamedGroups(enabledTlsNamedGroups);
+    return this;
+  }
+
+  @Override
   public TelemetryExporterBuilder<T> setMeterProvider(
       Supplier<MeterProvider> meterProviderSupplier) {
     delegate.setMeterProvider(meterProviderSupplier);

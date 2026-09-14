@@ -32,6 +32,7 @@ import java.util.logging.Logger;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.X509TrustManager;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -84,7 +85,8 @@ public final class OkHttpHttpSender implements HttpSender {
       @Nullable X509TrustManager trustManager,
       @Nullable ExecutorService executorService,
       long maxResponseBodySize,
-      @Nullable List<String> enabledProtocols) {
+      @Nullable List<String> enabledProtocols,
+      @Nullable List<String> enabledTlsNamedGroups) {
     int callTimeoutMillis = (int) Math.min(timeout.toMillis(), Integer.MAX_VALUE);
     int connectTimeoutMillis = (int) Math.min(connectTimeout.toMillis(), Integer.MAX_VALUE);
 
@@ -117,8 +119,20 @@ public final class OkHttpHttpSender implements HttpSender {
     if (isPlainHttp) {
       builder.connectionSpecs(Collections.singletonList(ConnectionSpec.CLEARTEXT));
     } else {
-      if (sslContext != null) {
-        X509TrustManager effectiveTrustManager = trustManager;
+      SSLSocketFactory sslSocketFactory = sslContext != null ? sslContext.getSocketFactory() : null;
+      X509TrustManager effectiveTrustManager = trustManager;
+      if (enabledTlsNamedGroups != null && !enabledTlsNamedGroups.isEmpty()) {
+        if (sslSocketFactory == null) {
+          try {
+            sslSocketFactory = TlsUtil.defaultSslSocketFactory();
+          } catch (SSLException e) {
+            throw new IllegalStateException("Unable to initialize default SSLSocketFactory", e);
+          }
+        }
+        sslSocketFactory =
+            TlsUtil.namedGroupsSslSocketFactory(sslSocketFactory, enabledTlsNamedGroups);
+      }
+      if (sslSocketFactory != null) {
         if (effectiveTrustManager == null) {
           try {
             effectiveTrustManager = TlsUtil.defaultTrustManager();
@@ -126,7 +140,7 @@ public final class OkHttpHttpSender implements HttpSender {
             throw new IllegalStateException("Unable to initialize default trust manager", e);
           }
         }
-        builder.sslSocketFactory(sslContext.getSocketFactory(), effectiveTrustManager);
+        builder.sslSocketFactory(sslSocketFactory, effectiveTrustManager);
       }
       if (enabledProtocols != null && !enabledProtocols.isEmpty()) {
         TlsVersion[] versions =

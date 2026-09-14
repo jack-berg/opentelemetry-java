@@ -146,6 +146,13 @@ public class HttpLogRecordExporterBuilderWrapper
   }
 
   @Override
+  public TelemetryExporterBuilder<LogRecordData> setEnabledTlsNamedGroups(
+      List<String> enabledTlsNamedGroups) {
+    builder.setEnabledTlsNamedGroups(enabledTlsNamedGroups);
+    return this;
+  }
+
+  @Override
   public TelemetryExporterBuilder<LogRecordData> setMeterProvider(
       Supplier<MeterProvider> meterProviderSupplier) {
     builder.setMeterProvider(meterProviderSupplier);
