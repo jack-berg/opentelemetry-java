@@ -130,7 +130,7 @@ public final class PeriodicMetricReader implements MetricReader {
       return CompletableResultCode.ofSuccess();
     }
     CompletableResultCode collectExport = new CompletableResultCode();
-    signals.offer(new Signal(collectExport, /* poison= */ false));
+    signals.offer(new Signal(collectExport, /* poison= */ false, /* isTick= */ false));
     CompletableResultCode result = new CompletableResultCode();
     collectExport.whenComplete(
         () -> {
@@ -161,7 +161,7 @@ public final class PeriodicMetricReader implements MetricReader {
 
     // Final flush + poison. Worker drains the flush signal, completes it, then exits on POISON.
     CompletableResultCode finalFlush = new CompletableResultCode();
-    signals.offer(new Signal(finalFlush, /* poison= */ false));
+    signals.offer(new Signal(finalFlush, /* poison= */ false, /* isTick= */ false));
     signals.offer(Signal.POISON);
 
     // Block until the worker drains the final flush and terminates. This preserves the
@@ -251,6 +251,7 @@ public final class PeriodicMetricReader implements MetricReader {
         return;
       }
       if (signal.poison) {
+        tickPending.set(false);
         return;
       }
       try {
@@ -263,6 +264,9 @@ public final class PeriodicMetricReader implements MetricReader {
           }
         }
       } finally {
+        // Only clear tickPending when processing a TICK signal to preserve coalescing semantics.
+        // If a flush is processed while a tick is queued, tickPending remains true so the next
+        // interval doesn't enqueue another tick.
         if (signal.isTick) {
           tickPending.set(false);
         }
@@ -345,10 +349,6 @@ public final class PeriodicMetricReader implements MetricReader {
       this.flushResult = flushResult;
       this.poison = poison;
       this.isTick = isTick;
-    }
-
-    Signal(@Nullable CompletableResultCode flushResult, boolean poison) {
-      this(flushResult, poison, /* isTick= */ false);
     }
   }
 }

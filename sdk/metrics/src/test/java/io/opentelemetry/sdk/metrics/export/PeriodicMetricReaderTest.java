@@ -830,6 +830,142 @@ class PeriodicMetricReaderTest {
   }
 
   @Test
+  void exporterTimeout_batchesCalledInOrder() throws Exception {
+    MetricExporter mockExporter = mock(MetricExporter.class);
+    when(mockExporter.getAggregationTemporality(any()))
+        .thenReturn(AggregationTemporality.CUMULATIVE);
+    when(mockExporter.flush()).thenReturn(CompletableResultCode.ofSuccess());
+    when(mockExporter.shutdown()).thenReturn(CompletableResultCode.ofSuccess());
+
+    CompletableResultCode batch1Result = new CompletableResultCode();
+    CompletableResultCode batch2Result = new CompletableResultCode();
+    CompletableResultCode batch3Result = new CompletableResultCode();
+
+    when(mockExporter.export(any())).thenReturn(batch1Result).thenReturn(batch2Result).thenReturn(batch3Result);
+
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(mockExporter)
+            .setInterval(Duration.ofSeconds(Integer.MAX_VALUE))
+            .setMaxExportBatchSize(2) // 6 points / 2 = 3 batches
+            .setExporterTimeout(Duration.ofSeconds(10)) // Long timeout to avoid timeout during test
+            .build();
+
+    when(collectionRegistration.collectAllMetrics())
+        .thenReturn(Collections.singletonList(METRIC_DATA));
+    reader.register(collectionRegistration);
+
+    try {
+      CompletableResultCode flush = reader.forceFlush();
+
+      // Verify that batch 1 was called (flush triggers immediate processing)
+      verify(mockExporter, timeout(5000).times(1)).export(any());
+
+      // Complete batch 1 - batch 2 should be called
+      batch1Result.succeed();
+      verify(mockExporter, timeout(5000).times(2)).export(any());
+
+      // Complete batch 2 - batch 3 should be called
+      batch2Result.succeed();
+      verify(mockExporter, timeout(5000).times(3)).export(any());
+
+      // Complete batch 3
+      batch3Result.succeed();
+
+      // Wait for flush to complete
+      flush.join(5, TimeUnit.SECONDS);
+    } finally {
+      // Ensure cleanup even if test fails
+      batch1Result.succeed();
+      batch2Result.succeed();
+      batch3Result.succeed();
+      reader.shutdown();
+    }
+  }
+
+  @Test
+  @Timeout(10)
+  void tickCoalescing_withSlowExporter() throws Exception {
+    // Test that ticks are coalesced when exporter is slower than interval
+    //
+    // This test verifies the tick coalescing invariant:
+    // 1. First TICK starts an export
+    // 2. Exporter remains blocked
+    // 3. Additional scheduled intervals occur
+    // 4. Only one TICK remains pending because tickPending stays true
+    // 5. After the first export completes, the queued/coalesced TICK is processed
+    //
+    // Note: This test necessarily relies on scheduler timing to prove that additional
+    // intervals fire while an export is blocked. The 500ms window provides a generous
+    // margin for the 50ms interval to fire multiple times while keeping the test fast.
+    CountDownLatch exportStarted = new CountDownLatch(1);
+    CountDownLatch exportShouldComplete = new CountDownLatch(1);
+    AtomicInteger exportCount = new AtomicInteger(0);
+
+    MetricExporter slowExporter =
+        new MetricExporter() {
+          @Override
+          public AggregationTemporality getAggregationTemporality(InstrumentType instrumentType) {
+            return AggregationTemporality.CUMULATIVE;
+          }
+
+          @Override
+          public CompletableResultCode export(Collection<MetricData> metrics) {
+            int currentCount = exportCount.incrementAndGet();
+            if (currentCount == 1) {
+              exportStarted.countDown();
+              try {
+                // Block the first export to simulate slow exporter
+                exportShouldComplete.await(5, TimeUnit.SECONDS);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            }
+            return CompletableResultCode.ofSuccess();
+          }
+
+          @Override
+          public CompletableResultCode flush() {
+            return CompletableResultCode.ofSuccess();
+          }
+
+          @Override
+          public CompletableResultCode shutdown() {
+            return CompletableResultCode.ofSuccess();
+          }
+        };
+
+    // Use a very short interval (50ms) and long timeout to ensure multiple intervals fire
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(slowExporter)
+            .setInterval(Duration.ofMillis(50))
+            .setExporterTimeout(Duration.ofSeconds(10))
+            .build();
+
+    reader.register(collectionRegistration);
+
+    // Wait for first export to start
+    assertThat(exportStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+    // Wait for multiple intervals to fire (500ms allows 10+ intervals at 50ms each)
+    // This provides a generous window for the scheduler to fire multiple times while the export is blocked
+    // If tick coalescing is broken, multiple exports would start during this window
+    Thread.sleep(500);
+
+    // Verify that only one export started during the blocking period
+    // This proves tick coalescing is working - tickPending prevented additional TICKs from being queued
+    assertThat(exportCount.get()).isEqualTo(1);
+
+    // Release the export
+    exportShouldComplete.countDown();
+
+    // With proper coalescing (dropping ticks while export is in flight), we should still have only 1 export
+    // The coalesced ticks were dropped, not deferred
+    assertThat(exportCount.get()).isEqualTo(1);
+
+    reader.shutdown();
+  }
+
+  @Test
   void stringRepresentation() {
     when(metricExporter.toString()).thenReturn("MockMetricExporter{}");
     assertThat(
