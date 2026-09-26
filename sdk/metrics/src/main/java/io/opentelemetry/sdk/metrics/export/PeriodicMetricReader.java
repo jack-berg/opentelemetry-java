@@ -130,7 +130,7 @@ public final class PeriodicMetricReader implements MetricReader {
       return CompletableResultCode.ofSuccess();
     }
     CompletableResultCode collectExport = new CompletableResultCode();
-    signals.offer(new Signal(collectExport, /* poison= */ false));
+    signals.offer(new Signal(collectExport, /* poison= */ false, /* isTick= */ false));
     CompletableResultCode result = new CompletableResultCode();
     collectExport.whenComplete(
         () -> {
@@ -161,7 +161,7 @@ public final class PeriodicMetricReader implements MetricReader {
 
     // Final flush + poison. Worker drains the flush signal, completes it, then exits on POISON.
     CompletableResultCode finalFlush = new CompletableResultCode();
-    signals.offer(new Signal(finalFlush, /* poison= */ false));
+    signals.offer(new Signal(finalFlush, /* poison= */ false, /* isTick= */ false));
     signals.offer(Signal.POISON);
 
     // Block until the worker drains the final flush and terminates. This preserves the
@@ -264,7 +264,12 @@ public final class PeriodicMetricReader implements MetricReader {
           }
         }
       } finally {
-        tickPending.set(false);
+        // Only clear tickPending when processing a TICK signal to preserve coalescing semantics.
+        // If a flush is processed while a tick is queued, tickPending remains true so the next
+        // interval doesn't enqueue another tick.
+        if (signal.isTick) {
+          tickPending.set(false);
+        }
       }
     }
   }
@@ -333,15 +338,17 @@ public final class PeriodicMetricReader implements MetricReader {
    * final flush on shutdown), and poison pill (from shutdown to terminate the worker).
    */
   private static final class Signal {
-    static final Signal TICK = new Signal(null, /* poison= */ false);
-    static final Signal POISON = new Signal(null, /* poison= */ true);
+    static final Signal TICK = new Signal(null, /* poison= */ false, /* isTick= */ true);
+    static final Signal POISON = new Signal(null, /* poison= */ true, /* isTick= */ false);
 
     @Nullable final CompletableResultCode flushResult;
     final boolean poison;
+    final boolean isTick;
 
-    private Signal(@Nullable CompletableResultCode flushResult, boolean poison) {
+    private Signal(@Nullable CompletableResultCode flushResult, boolean poison, boolean isTick) {
       this.flushResult = flushResult;
       this.poison = poison;
+      this.isTick = isTick;
     }
   }
 }
