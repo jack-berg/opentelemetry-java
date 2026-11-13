@@ -12,20 +12,21 @@ assertThat(list).hasSize(3).contains("foo");
 assertThatThrownBy(() -> doThing()).isInstanceOf(IllegalArgumentException.class);
 ```
 
-For SDK signal data (spans, metrics, logs), use the OTel-specific assertj extensions from
-`sdk:testing`:
+For SDK signal data (spans, metrics, logs), use the OTel-specific assertj
+extensions from `sdk:testing`:
 
 ```java
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.assertThat;
 import static io.opentelemetry.sdk.testing.assertj.OpenTelemetryAssertions.attributeEntry;
 ```
 
-These provide fluent assertions on `SpanData`, `MetricData`, `LogRecordData`, etc.
+These provide fluent assertions on `SpanData`, `MetricData`, `LogRecordData`,
+etc.
 
 ## Clocks and time
 
-Avoid `System.currentTimeMillis()` or `Instant.now()` in tests. Use `TestClock` from
-`sdk:testing` for deterministic time control:
+Avoid `System.currentTimeMillis()` or `Instant.now()` in tests. Use `TestClock`
+from `sdk:testing` for deterministic time control:
 
 ```java
 TestClock clock = TestClock.create();
@@ -34,7 +35,8 @@ clock.advance(Duration.ofSeconds(1));
 
 ## Equals and hashCode
 
-Use [EqualsVerifier](https://jqno.nl/equalsverifier/) to verify `equals`/`hashCode` contracts:
+Use [EqualsVerifier](https://jqno.nl/equalsverifier/) to verify
+`equals`/`hashCode` contracts:
 
 ```java
 EqualsVerifier.forClass(MyValueClass.class).verify();
@@ -61,11 +63,13 @@ void logsWarning() {
 
 ## Parameterized tests
 
-Prefer `@ParameterizedTest` with `@MethodSource` when testing the same logic across multiple
-inputs. This keeps assertions in one place and gives each case a distinct name in the test report.
+Prefer `@ParameterizedTest` with `@MethodSource` when testing the same logic
+across multiple inputs. This keeps assertions in one place and gives each case a
+distinct name in the test report.
 
-Use `Arguments.argumentSet(String name, Object... args)` to name each case. This requires no
-changes to the test method signature and no `name =` attribute on the annotation:
+Use `Arguments.argumentSet(String name, Object... args)` to name each case. This
+requires no changes to the test method signature and no `name =` attribute on
+the annotation:
 
 ```java
 @ParameterizedTest
@@ -84,7 +88,8 @@ static Stream<Arguments> createTestCases() {
 ## Mocking
 
 Mockito is available in all test suites via `otel.java-conventions`. Use
-`@ExtendWith(MockitoExtension.class)` with `@Mock` fields, or `Mockito.mock(...)` inline.
+`@ExtendWith(MockitoExtension.class)` with `@Mock` fields, or
+`Mockito.mock(...)` inline.
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -94,17 +99,18 @@ class MyTest {
 }
 ```
 
-The byte-buddy agent is pre-attached by `otel.java-conventions` to suppress dynamic-agent
-warnings on Java 21+. No extra configuration needed.
+The byte-buddy agent is pre-attached by `otel.java-conventions` to suppress
+dynamic-agent warnings on Java 21+. No extra configuration needed.
 
 ## Shared test utilities
 
-Do **not** use the `java-test-fixtures` plugin. It adds test dependencies to published POMs and
-creates a separate `*-test-fixtures.jar` artifact. Shared test utilities belong in a
-`*:testing-internal` module.
+Do **not** use the `java-test-fixtures` plugin. It adds test dependencies to
+published POMs and creates a separate `*-test-fixtures.jar` artifact. Shared
+test utilities belong in a `*:testing-internal` module.
 
-The root `:testing-internal` module (`/testing-internal/`) contains utilities available across
-all modules. It is included automatically by `otel.java-conventions` as a test dependency.
+The root `:testing-internal` module (`/testing-internal/`) contains utilities
+available across all modules. It is included automatically by
+`otel.java-conventions` as a test dependency.
 
 For module-group-specific utilities, create a sibling `testing-internal` module:
 
@@ -116,20 +122,23 @@ sdk/
     src/main/java/...
 ```
 
-`sdk:testing` is published and intended for use by external consumers testing OTel integrations.
-Keep it stable — treat it as public API.
+`sdk:testing` is published and intended for use by external consumers testing
+OTel integrations. Keep it stable — treat it as public API.
 
 ## Test framework
 
-JUnit 5 (Jupiter). `otel.java-conventions` configures `useJUnitJupiter()` for all test suites.
+JUnit 5 (Jupiter). `otel.java-conventions` configures `useJUnitJupiter()` for
+all test suites.
 
-- Use `@Test`, `@BeforeEach`, `@AfterEach`, `@ParameterizedTest` from `org.junit.jupiter.api`.
+- Use `@Test`, `@BeforeEach`, `@AfterEach`, `@ParameterizedTest` from
+  `org.junit.jupiter.api`.
 - Use `@RegisterExtension` for JUnit 5 extensions (not `@Rule`).
 - `@ExtendWith(MockitoExtension.class)` for Mockito injection.
 
 ## Test suites
 
-This repo uses Gradle's `JvmTestSuite` API (not manual `Test` task registration).
+This repo uses Gradle's `JvmTestSuite` API (not manual `Test` task
+registration).
 
 ```kotlin
 testing {
@@ -150,7 +159,9 @@ tasks {
 ```
 
 Rules:
-- All registered test suites must be wired into `check` — omitting this causes them to be
-  silently skipped in CI.
+
+- All registered test suites must be wired into `check` — omitting this causes
+  them to be silently skipped in CI.
 - Each suite has its own source set under `src/<suiteName>/java/`.
-- Suite-specific JVM args go in a `targets { all { testTask.configure { ... } } }` block.
+- Suite-specific JVM args go in a
+  `targets { all { testTask.configure { ... } } }` block.

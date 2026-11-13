@@ -1,6 +1,7 @@
 # Build
 
-Java 25 or higher is required to build. The built artifacts target Java 8 or higher.
+Java 25 or higher is required to build. The built artifacts target Java 8 or
+higher.
 
 ## Common tasks
 
@@ -23,14 +24,15 @@ All tasks can be scoped to a single module by prefixing with the module path:
 ./gradlew :sdk:metrics:build
 ```
 
-`./gradlew build` and `./gradlew check` both depend on the `jApiCmp` task, which compares the
-locally-built jars against the release pinned by `apidiffBaselineVersion` in `version.gradle.kts`
-and writes diffs to `docs/apidiffs/current_vs_latest/`. Include any changes to those files in your
+`./gradlew build` and `./gradlew check` both depend on the `jApiCmp` task, which
+compares the locally-built jars against the release pinned by
+`apidiffBaselineVersion` in `version.gradle.kts` and writes diffs to
+`docs/apidiffs/current_vs_latest/`. Include any changes to those files in your
 PR. See [api-design.md](api-design.md#japicmp) for details.
 
-If your branch is not up to date with `main`, `jApiCmp` may produce a diff that reflects changes
-already merged to `main` rather than your own changes. Rebase or merge `main` before treating
-the diff as meaningful.
+If your branch is not up to date with `main`, `jApiCmp` may produce a diff that
+reflects changes already merged to `main` rather than your own changes. Rebase
+or merge `main` before treating the diff as meaningful.
 
-For dev environment setup, composite builds, OTLP protobuf updates, and other tasks, see
-[other-tasks.md](other-tasks.md).
+For dev environment setup, composite builds, OTLP protobuf updates, and other
+tasks, see [other-tasks.md](other-tasks.md).
