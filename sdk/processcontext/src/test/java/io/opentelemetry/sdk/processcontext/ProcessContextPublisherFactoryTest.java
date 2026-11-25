@@ -13,11 +13,9 @@ class ProcessContextPublisherFactoryTest {
 
   @Test
   void noopByDefault() {
+    ProcessContextPublisher publisher = ProcessContextPublisher.getInstance();
 
-    ProcessContextPublisher processContextPublisher =
-        ProcessContextPublisherFactory.getInstance().create();
-
-    assertThat(processContextPublisher).isNotNull();
-    assertThat(processContextPublisher).isInstanceOf(NoopProcessContextPublisher.class);
+    assertThat(publisher).isNotNull();
+    assertThat(publisher).isInstanceOf(NoopProcessContextPublisher.class);
   }
 }

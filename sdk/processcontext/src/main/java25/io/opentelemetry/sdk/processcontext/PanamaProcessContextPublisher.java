@@ -5,6 +5,7 @@
 
 package io.opentelemetry.sdk.processcontext;
 
+import io.opentelemetry.api.internal.GuardedBy;
 import io.opentelemetry.sdk.common.Clock;
 import io.opentelemetry.sdk.common.export.MessageWriter;
 import io.opentelemetry.sdk.processcontext.data.ProcessContextData;
@@ -32,7 +33,8 @@ final class PanamaProcessContextPublisher implements ProcessContextPublisher {
   private static final int PROT_WRITE = 0x2;
   private static final int MAP_PRIVATE = 0x2;
   private static final int MAP_ANONYMOUS = 0x20;
-  private static final int MADV_DONTFORK = 0x10;
+  // Linux: MADV_DONTFORK is 10 (0x10 is MADV_DONTDUMP, which is unrelated).
+  private static final int MADV_DONTFORK = 10;
   private static final int PR_SET_VMA = 0x53564d41;
   private static final int PR_SET_VMA_ANON_NAME = 0;
   private static final int MFD_CLOEXEC = 0x1;
@@ -128,59 +130,127 @@ final class PanamaProcessContextPublisher implements ProcessContextPublisher {
     }
   }
 
-  @Nullable private MemorySegment mapping = null;
-  @Nullable private ProcessContextHeader header = null;
-  @Nullable private Arena payloadArena = null;
+  private final Object lock = new Object();
+
+  @GuardedBy("lock")
+  @Nullable
+  private MemorySegment mapping = null;
+
+  @GuardedBy("lock")
+  @Nullable
+  private ProcessContextHeader header = null;
+
+  @GuardedBy("lock")
+  @Nullable
+  private Arena payloadArena = null;
+
+  @GuardedBy("lock")
+  private long lastTimestampNs = 0L;
+
+  /** Package-private factory used reflectively by {@link ProcessContextPublisherFactory}. */
+  static PanamaProcessContextPublisher create() {
+    return new PanamaProcessContextPublisher();
+  }
+
+  private PanamaProcessContextPublisher() {}
 
   @Override
-  @SuppressWarnings("MustBeClosedChecker") // externally visible memory must exceed method lifetime
-  public synchronized void publish(ProcessContextData processContextData, Clock clock)
-      throws IOException {
-
-    Arena prevPayloadArena = null;
-
-    try {
-
+  public void publish(ProcessContextData processContextData, Clock clock) throws IOException {
+    synchronized (lock) {
       if (header == null) {
-
-        // first time - follow 'publication' steps
-        mapping = initializeMapping(); // spec: publication steps 1-5
-        header = new ProcessContextHeader(mapping);
-        // spec publication step 6 (equiv updating step 1). Encode payload
-        payloadArena = Arena.ofShared();
-        MemorySegment payload = encode(payloadArena, processContextData);
-        header.publish(payload, clock.now()); // spec: publication steps 7-9
-        nameMapping(); // spec: publication step 10.
-
+        publishFirstTime(processContextData, clock);
       } else {
-
-        // already published - follow 'updating' steps
-        prevPayloadArena = payloadArena;
-        // spec updating step 1. Encode payload
-        payloadArena = Arena.ofShared();
-        MemorySegment payload = encode(payloadArena, processContextData);
-        header.update(payload, clock.now()); // spec: updating steps 2-6
-        prevPayloadArena.close(); // free old payload memory
-        nameMapping(); // spec: updating step 7.
+        publishUpdate(processContextData, clock);
       }
+    }
+  }
 
+  @SuppressWarnings("MustBeClosedChecker") // externally visible memory must exceed method lifetime
+  private void publishFirstTime(ProcessContextData processContextData, Clock clock)
+      throws IOException {
+    MemorySegment newMapping = null;
+    Arena newPayloadArena = null;
+    try {
+      newMapping = initializeMapping(); // spec: publication steps 1-5
+      ProcessContextHeader newHeader = new ProcessContextHeader(newMapping);
+      // spec publication step 6 (equiv updating step 1). Encode payload
+      newPayloadArena = Arena.ofShared();
+      MemorySegment payload = encode(newPayloadArena, processContextData);
+      long now = clock.nanoTime();
+      newHeader.publish(payload, now); // spec: publication steps 7-9
+      nameMapping(newMapping); // spec: publication step 10.
+
+      // commit state only after all steps succeed
+      this.mapping = newMapping;
+      this.header = newHeader;
+      this.payloadArena = newPayloadArena;
+      this.lastTimestampNs = now;
+    } catch (Throwable t) {
+      // roll back partial resources so a retry can start clean
+      if (newPayloadArena != null) {
+        try {
+          newPayloadArena.close();
+        } catch (Throwable suppressed) {
+          t.addSuppressed(suppressed);
+        }
+      }
+      if (newMapping != null) {
+        try {
+          MUNMAP.invoke(newMapping, MAPPING_SIZE);
+        } catch (Throwable suppressed) {
+          t.addSuppressed(suppressed);
+        }
+      }
+      throw new IOException(t);
+    }
+  }
+
+  @SuppressWarnings("MustBeClosedChecker") // externally visible memory must exceed method lifetime
+  private void publishUpdate(ProcessContextData processContextData, Clock clock)
+      throws IOException {
+    long now = clock.nanoTime();
+    if (now <= lastTimestampNs) {
+      // No time has elapsed since the previous publication; no meaningful update to report, and
+      // publishing with an unchanged timestamp would prevent readers from detecting the update
+      // via the seqlock protocol.
+      return;
+    }
+    Arena prevPayloadArena = payloadArena;
+    try {
+      // spec updating step 1. Encode payload
+      Arena newPayloadArena = Arena.ofShared();
+      MemorySegment payload = encode(newPayloadArena, processContextData);
+      header.update(payload, now); // spec: updating steps 2-6
+      payloadArena = newPayloadArena;
+      lastTimestampNs = now;
+      prevPayloadArena.close(); // free old payload memory
+      nameMapping(mapping); // spec: updating step 7.
     } catch (Throwable t) {
       throw new IOException(t);
     }
   }
 
   @Override
-  public synchronized void close() throws IOException {
-    try {
-      if (header != null) {
+  public void close() throws IOException {
+    synchronized (lock) {
+      if (header == null) {
+        return;
+      }
+      try {
+        // Signal in-flight readers to abort before freeing memory.
+        // Per OTEP-4719 reading protocol step 3, a zero timestamp indicates the mapping is
+        // being mutated and the reader must retry.
+        header.invalidate();
         MUNMAP.invoke(mapping, MAPPING_SIZE);
         payloadArena.close();
-        // allow reopening:
+      } catch (Throwable t) {
+        throw new IOException(t);
+      } finally {
+        // allow reopening even if teardown partially failed
         header = null;
         mapping = null;
+        payloadArena = null;
       }
-    } catch (Throwable t) {
-      throw new IOException(t);
     }
   }
 
@@ -264,14 +334,14 @@ final class PanamaProcessContextPublisher implements ProcessContextPublisher {
     return mapping;
   }
 
-  private void nameMapping() throws Throwable {
+  private static void nameMapping(MemorySegment target) throws Throwable {
     // spec: publication step 10. and updating protocol step 7: Name mapping
     // Use prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, ...,"OTEL_CTX") to name the mapping.
     // This step should be done unconditionally, although naming
     // mappings is not always supported by the kernel.
     try (Arena arena = Arena.ofConfined()) {
       MemorySegment nameSegment = arena.allocateFrom(OTEL_NAME);
-      PRCTL.invoke(PR_SET_VMA, PR_SET_VMA_ANON_NAME, mapping, MAPPING_SIZE, nameSegment);
+      PRCTL.invoke(PR_SET_VMA, PR_SET_VMA_ANON_NAME, target, MAPPING_SIZE, nameSegment);
     }
   }
 

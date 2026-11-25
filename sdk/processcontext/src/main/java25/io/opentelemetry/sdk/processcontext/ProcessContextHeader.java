@@ -140,6 +140,20 @@ final class ProcessContextHeader {
     publishTimestamp(now);
   }
 
+  /**
+   * Signal to in-flight readers that the context is no longer valid. Writes 0 to
+   * monotonic_published_at_ns; per the reader protocol this is treated as "update in progress" and
+   * triggers a reader retry, giving us a safe window to tear down the mapping.
+   *
+   * @see <a
+   *     href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/oteps/profiles/4719-process-ctx.md#reading-protocol">OTEP
+   *     4719 reading protocol</a>
+   */
+  void invalidate() {
+    TIMESTAMP_HANDLE.set(memorySegment, 0L);
+    VarHandle.fullFence();
+  }
+
   private void publishPayload(MemorySegment payload) {
     PAYLOAD_SIZE_HANDLE.set(memorySegment, (int) payload.byteSize());
     PAYLOAD_ADDRESS_HANDLE.set(memorySegment, payload);

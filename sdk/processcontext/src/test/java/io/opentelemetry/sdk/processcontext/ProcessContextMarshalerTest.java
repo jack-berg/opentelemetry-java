@@ -14,6 +14,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.exporter.internal.marshal.Marshaler;
 import io.opentelemetry.proto.processcontext.v1development.ProcessContext;
 import io.opentelemetry.sdk.processcontext.data.ProcessContextData;
+import io.opentelemetry.sdk.processcontext.internal.SdkProcessContextData;
 import io.opentelemetry.sdk.resources.Resource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -26,7 +27,7 @@ class ProcessContextMarshalerTest {
   @Test
   void compareProcessContextMarshaling() {
     ProcessContextData input =
-        ProcessContextData.create(Resource.create(Attributes.empty()), Attributes.empty());
+        SdkProcessContextData.create(Resource.create(Attributes.empty()), Attributes.empty());
     ProcessContext builderResult =
         ProcessContext.newBuilder()
             .setResource(io.opentelemetry.proto.resource.v1.Resource.newBuilder().build())

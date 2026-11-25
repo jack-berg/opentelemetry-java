@@ -29,7 +29,7 @@ class ProcessContextHeaderTest {
   }
 
   @Test
-  void headerPublication() {
+  void headerPublicationAndUpdate() {
     try (Arena arena = Arena.ofConfined()) {
       ProcessContextHeader processContextHeader =
           new ProcessContextHeader(arena.allocate(ProcessContextHeader.byteSize()));
@@ -43,8 +43,28 @@ class ProcessContextHeaderTest {
       clock.advance(Duration.ofSeconds(1));
 
       MemorySegment payloadB = arena.allocate(30);
-      processContextHeader.publish(payloadB, clock.now()); // update publication
+      processContextHeader.update(payloadB, clock.now()); // subsequent update
       validateContent(processContextHeader.getMemorySegment(), payloadB, clock.now());
+    }
+  }
+
+  @Test
+  void invalidateZeroesTimestamp() {
+    try (Arena arena = Arena.ofConfined()) {
+      ProcessContextHeader processContextHeader =
+          new ProcessContextHeader(arena.allocate(ProcessContextHeader.byteSize()));
+      MemorySegment payload = arena.allocate(20);
+      TestClock clock = TestClock.create();
+
+      processContextHeader.publish(payload, clock.now());
+      long publishedTimestamp =
+          processContextHeader.getMemorySegment().get(ValueLayout.JAVA_LONG, 16);
+      assertThat(publishedTimestamp).isNotZero();
+
+      processContextHeader.invalidate();
+      long invalidatedTimestamp =
+          processContextHeader.getMemorySegment().get(ValueLayout.JAVA_LONG, 16);
+      assertThat(invalidatedTimestamp).isZero();
     }
   }
 
